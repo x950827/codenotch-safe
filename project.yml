@@ -92,7 +92,7 @@ targets:
     type: bundle.unit-test
     platform: macOS
     sources:
-      - path: Tests
+      - path: SafeTests
     dependencies:
       - target: Codenotch
     settings:
