@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import XCTest
 @testable import Codenotch
 
@@ -27,7 +28,7 @@ final class SecurityBoundaryTests: XCTestCase {
         )
         XCTAssertEqual(Set(clientInfo.keys), ["name", "title", "version"])
         XCTAssertEqual(clientInfo["name"] as? String, "codenotch_safe_local")
-        XCTAssertTrue((messages[2]["params"] as? [String: Any])?.isEmpty == true)
+        XCTAssertNil(messages[2]["params"])
     }
 
     func testCodexParserSelectsOnlyResponseOneAndPrefersCodexBucket() throws {
@@ -54,6 +55,66 @@ final class SecurityBoundaryTests: XCTestCase {
         XCTAssertThrowsError(CodexAppServerProtocol.parse(
             #"{"id":1,"error":{"code":-32001,"message":"authentication required"}}"#
         ))
+    }
+
+    func testCodexExecutableUsesOnlyTheAppServerSubcommand() {
+        XCTAssertEqual(CodexAppServerExecutable.arguments, ["app-server"])
+    }
+
+    func testCodexProviderUsesInjectedAppServerReader() async throws {
+        let provider = CodexAppServerProvider(readWindows: {
+            [LimitWindow(id: "primary", label: "5h limit", usedFraction: 0.21)]
+        })
+
+        let snapshot = try await provider.fetchSnapshot()
+
+        XCTAssertEqual(snapshot.id, "codex")
+        XCTAssertEqual(snapshot.windows.first?.usedFraction, 0.21)
+        XCTAssertEqual(snapshot.headlineID, "primary")
+        XCTAssertNil(provider.account())
+    }
+
+    func testClaudeLabelsDoNotDependOnOAuthResponseTypes() {
+        XCTAssertEqual(ClaudeUsageLabels.label(forKind: "session"), "Current session")
+        XCTAssertEqual(ClaudeUsageLabels.label(forKind: "weekly_all"), "All models")
+        XCTAssertEqual(ClaudeUsageLabels.label(forKind: "weekly_opus"), "Opus")
+
+        let weekly = LimitWindow(id: "weekly_all", label: "All models")
+        let session = LimitWindow(id: "session", label: "Current session")
+        XCTAssertTrue(ClaudeUsageLabels.displayOrder(session, weekly))
+    }
+
+    func testClaudeProviderUsesOnlyTheInjectedCLI() async throws {
+        let profile = ClaudeProfile.default(
+            home: URL(fileURLWithPath: "/tmp/codenotch-safe-claude-profile")
+        )
+        let cli = ClaudeUsageCLI(binary: URL(fileURLWithPath: "/fake/claude")) { _ in
+            "Current session: 34% used"
+        }
+        let provider = ClaudeCLIOnlyProvider(profile: profile, cli: cli)
+
+        let snapshot = try await provider.fetchSnapshot()
+
+        XCTAssertEqual(snapshot.id, "claude")
+        XCTAssertEqual(snapshot.windows.map(\.id), ["session"])
+        XCTAssertEqual(snapshot.windows.first?.usedFraction, 0.34)
+        XCTAssertEqual(snapshot.headlineID, "session")
+    }
+
+    func testClaudeProviderNeverFallsBackWhenCLIIsUnavailable() async {
+        let provider = ClaudeCLIOnlyProvider(
+            profile: .default(home: URL(fileURLWithPath: "/tmp/codenotch-no-claude")),
+            cli: nil
+        )
+
+        do {
+            _ = try await provider.fetchSnapshot()
+            XCTFail("a missing Claude CLI must require authentication in Claude Code")
+        } catch UsageProviderError.needsAuth {
+            // Expected: there is deliberately no token fallback.
+        } catch {
+            XCTFail("expected needsAuth, got \(error)")
+        }
     }
 
     func testCursorEndpointIsExactAndHasOnlyRequiredHeaders() throws {
@@ -86,5 +147,86 @@ final class SecurityBoundaryTests: XCTestCase {
                 value
             )
         }
+    }
+
+    func testCursorCredentialLoaderReadsTheEditorDatabaseWithoutMutation() throws {
+        let store = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codenotch-cursor-\(UUID().uuidString).vscdb")
+        defer { try? FileManager.default.removeItem(at: store) }
+
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(store.path, &db), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(db, "CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT);",
+                                   nil, nil, nil), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(db,
+            "INSERT INTO ItemTable VALUES ('cursorAuth/accessToken', 'fake-token');",
+            nil, nil, nil), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(db,
+            "INSERT INTO ItemTable VALUES ('cursorAuth/stripeMembershipAuthId', 'fake-account');",
+            nil, nil, nil), SQLITE_OK)
+        sqlite3_close(db)
+
+        let before = try Data(contentsOf: store)
+        let credentials = try CursorEditorCredentials.load(from: store)
+        let after = try Data(contentsOf: store)
+
+        XCTAssertEqual(credentials.accountID, "fake-account")
+        XCTAssertEqual(credentials.accessToken, "fake-token")
+        XCTAssertEqual(credentials.cookieValue, "fake-account::fake-token")
+        XCTAssertEqual(after, before, "the credential database was modified")
+    }
+
+    func testCursorCredentialLoaderHasNoFallbackWhenEditorValuesAreMissing() throws {
+        let store = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codenotch-cursor-empty-\(UUID().uuidString).vscdb")
+        defer { try? FileManager.default.removeItem(at: store) }
+
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(store.path, &db), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(db, "CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT);",
+                                   nil, nil, nil), SQLITE_OK)
+        sqlite3_close(db)
+
+        XCTAssertThrowsError(try CursorEditorCredentials.load(from: store)) { error in
+            guard case UsageProviderError.needsAuth = error else {
+                return XCTFail("expected needsAuth, got \(error)")
+            }
+        }
+    }
+
+    func testCursorSessionKeepsNothingPersistent() {
+        let configuration = CursorEndpoint.makeConfiguration()
+
+        XCTAssertNil(configuration.httpCookieStorage)
+        XCTAssertNil(configuration.urlCredentialStorage)
+        XCTAssertNil(configuration.urlCache)
+        XCTAssertFalse(configuration.httpShouldSetCookies)
+        XCTAssertEqual(configuration.requestCachePolicy, .reloadIgnoringLocalCacheData)
+    }
+
+    func testCursorRedirectDelegateRejectsEveryRedirect() throws {
+        let delegate = RedirectRejectingSessionDelegate()
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        let original = try XCTUnwrap(URL(string: "https://cursor.com/api/usage-summary"))
+        let redirected = try XCTUnwrap(URL(string: "https://cursor.com/another-path"))
+        let task = session.dataTask(with: original)
+        let response = try XCTUnwrap(HTTPURLResponse(
+            url: original,
+            statusCode: 302,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Location": redirected.absoluteString]
+        ))
+        var result: URLRequest? = URLRequest(url: redirected)
+
+        delegate.urlSession(
+            session,
+            task: task,
+            willPerformHTTPRedirection: response,
+            newRequest: URLRequest(url: redirected)
+        ) { result = $0 }
+
+        XCTAssertNil(result)
+        task.cancel()
     }
 }
