@@ -25,11 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             || NSClassFromString("XCTestCase") != nil
     }
 
-    /// Every Claude Code configuration directory on this Mac — `~/.claude` and
-    /// any `~/.claude-<slug>` — found once at launch. Each gets a usage
-    /// provider and a session monitor of its own, keyed by the same id, so a
-    /// work login's sessions spin the work ring and nobody else's.
-    private let claudeProfiles = ClaudeProfile.discover()
+    /// Only the default Claude Code login. Arbitrary named profiles can attach
+    /// credential helpers, alternate providers, hooks or other executable
+    /// configuration outside this audited source tree.
+    private let claudeProfiles = SafeClaudeProfiles.onlyDefault()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Set here, not in the Info.plist: this call is applied at launch and

@@ -4,6 +4,19 @@ import XCTest
 @testable import Codenotch
 
 final class SecurityBoundaryTests: XCTestCase {
+    func testFiveMinuteTimerDoesNotSkipForSubsecondClockSkew() {
+        XCTAssertFalse(UsageStore.shouldRefresh(
+            isBusy: false,
+            sinceLastAttempt: 298.9,
+            idleInterval: 300
+        ))
+        XCTAssertTrue(UsageStore.shouldRefresh(
+            isBusy: false,
+            sinceLastAttempt: 299.5,
+            idleInterval: 300
+        ))
+    }
+
     func testCodexHandshakeRequestsOnlyRateLimits() throws {
         let messages = try CodexAppServerProtocol.input
             .split(separator: "\n")
@@ -82,6 +95,58 @@ final class SecurityBoundaryTests: XCTestCase {
         let weekly = LimitWindow(id: "weekly_all", label: "All models")
         let session = LimitWindow(id: "session", label: "Current session")
         XCTAssertTrue(ClaudeUsageLabels.displayOrder(session, weekly))
+    }
+
+    func testClaudeInvocationDisablesCustomizationToolsAndPersistence() {
+        XCTAssertEqual(ClaudeUsageCLI.arguments, [
+            "--print",
+            "--safe-mode",
+            "--strict-mcp-config",
+            "--tools", "",
+            "--no-chrome",
+            "--no-session-persistence",
+            "/usage",
+        ])
+    }
+
+    func testSafeClaudePolicyUsesOnlyTheDefaultProfile() {
+        let home = URL(fileURLWithPath: "/tmp/codenotch-safe-home")
+
+        XCTAssertEqual(
+            SafeClaudeProfiles.onlyDefault(home: home),
+            [ClaudeProfile.default(home: home)]
+        )
+    }
+
+    func testClaudeEnvironmentRejectsCredentialEndpointAndProxyOverrides() {
+        let profile = ClaudeProfile(
+            slug: "work",
+            configDirectory: URL(fileURLWithPath: "/tmp/.claude-work")
+        )
+        let environment = ClaudeUsageCLI.sanitizedEnvironment(
+            profile: profile,
+            source: [
+                "HOME": "/tmp/home",
+                "PATH": "/usr/bin:/bin",
+                "LANG": "en_US.UTF-8",
+                "ANTHROPIC_API_KEY": "must-not-pass",
+                "ANTHROPIC_BASE_URL": "https://must-not-pass.example",
+                "HTTP_PROXY": "http://must-not-pass.example",
+                "CLAUDE_CONFIG_DIR": "/tmp/wrong-profile",
+            ]
+        )
+
+        XCTAssertEqual(environment["HOME"], "/tmp/home")
+        XCTAssertEqual(environment["PATH"], "/usr/bin:/bin")
+        XCTAssertEqual(environment["LANG"], "en_US.UTF-8")
+        XCTAssertEqual(environment["CLAUDE_CONFIG_DIR"], "/tmp/.claude-work")
+        XCTAssertEqual(environment["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"], "1")
+        XCTAssertEqual(environment["ENABLE_CLAUDEAI_MCP_SERVERS"], "false")
+        XCTAssertEqual(environment["CLAUDE_CODE_DISABLE_ARTIFACT"], "1")
+        XCTAssertEqual(environment["CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL"], "1")
+        XCTAssertNil(environment["ANTHROPIC_API_KEY"])
+        XCTAssertNil(environment["ANTHROPIC_BASE_URL"])
+        XCTAssertNil(environment["HTTP_PROXY"])
     }
 
     func testClaudeProviderUsesOnlyTheInjectedCLI() async throws {

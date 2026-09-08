@@ -1,5 +1,17 @@
 import Foundation
 
+/// The hardened build never auto-discovers `~/.claude-*` profiles. A named
+/// profile may use an arbitrary API-key helper or provider configured outside
+/// this repository; invoking it would execute that helper during a background
+/// refresh. The default Claude Code login is the one audited path.
+enum SafeClaudeProfiles {
+    static func onlyDefault(
+        home: URL = ClaudeProfile.homeDirectory
+    ) -> [ClaudeProfile] {
+        [.default(home: home)]
+    }
+}
+
 /// Reads Claude limits only by asking Claude Code itself. This type has no
 /// credential loader and cannot fall back to a keychain or bearer-token path.
 actor ClaudeCLIOnlyProvider: UsageProvider {

@@ -100,11 +100,10 @@ struct ProviderRing: View {
 private struct ActivityArc: View {
     let summary: ActivitySummary
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var spinning = false
-    @State private var pulsing = false
-
-    /// How much of the circle the moving arc covers.
+    /// How much of the circle the working arc covers. The indicator is static:
+    /// activity is refreshed from the underlying store every five seconds, and
+    /// keeping Core Animation awake between those readings spent several CPU
+    /// percent even when the user never opened the notch.
     private let arcFraction: CGFloat = 0.25
 
     private var inset: CGFloat {
@@ -130,28 +129,13 @@ private struct ActivityArc: View {
                 summary.color,
                 style: StrokeStyle(lineWidth: NotchLayout.activityStroke, lineCap: .round)
             )
-            .rotationEffect(.degrees(spinning ? 360 : 0))
-            .onAppear {
-                guard !reduceMotion else { return }
-                withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) {
-                    spinning = true
-                }
-            }
-            .onDisappear { spinning = false }
+            .rotationEffect(.degrees(-90))
     }
 
     private var pulse: some View {
         Circle()
             .inset(by: inset)
             .stroke(summary.color, lineWidth: NotchLayout.activityStroke)
-            .opacity(pulsing ? 0.3 : 1)
-            .onAppear {
-                guard !reduceMotion else { return }
-                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                    pulsing = true
-                }
-            }
-            .onDisappear { pulsing = false }
     }
 }
 

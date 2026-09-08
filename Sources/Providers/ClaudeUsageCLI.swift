@@ -27,8 +27,22 @@ struct ClaudeUsageCLI: Sendable {
         self.output = output
     }
 
-    /// Long enough for a cold Node start on a busy machine, short enough that a
-    /// wedged process cannot hold a refresh open. A timeout kills the process.
+    /// The exact non-interactive invocation. Safe mode disables user and project
+    /// customizations; strict MCP mode prevents configured servers from being
+    /// started; the empty tool list and no-session flag keep this one built-in
+    /// status read from becoming an agent session.
+    static let arguments = [
+        "--print",
+        "--safe-mode",
+        "--strict-mcp-config",
+        "--tools", "",
+        "--no-chrome",
+        "--no-session-persistence",
+        "/usage",
+    ]
+
+    /// Long enough for a cold native start on a busy machine, short enough that
+    /// a wedged process cannot hold a refresh open. A timeout kills the process.
     static let timeout: TimeInterval = 20
 
     // MARK: - Finding the binary
@@ -90,20 +104,12 @@ struct ClaudeUsageCLI: Sendable {
         try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: scratch) }
 
-        var environment = ProcessInfo.processInfo.environment
-        // Only for a named profile. Pointing the variable at `~/.claude`
-        // explicitly is not the same as leaving it unset — Claude Code reads
-        // `.claude.json` from beside the home directory when it is unset and
-        // from inside the config directory when it is set, so setting it for
-        // the default profile would send it looking in the wrong place.
-        if profile.slug != nil {
-            environment["CLAUDE_CONFIG_DIR"] = profile.configDirectory.path
-        }
+        var environment = sanitizedEnvironment(profile: profile)
         environment["PWD"] = scratch.path
 
         let process = Process()
         process.executableURL = binary
-        process.arguments = ["/usage"]
+        process.arguments = arguments
         process.currentDirectoryURL = scratch
         process.environment = environment
         // Never a terminal. Left inheriting the app's stdin, `claude` waits for
@@ -138,6 +144,38 @@ struct ClaudeUsageCLI: Sendable {
             throw UsageProviderError.badResponse(status: 0)
         }
         return text
+    }
+
+    /// Keep locale and the filesystem identity Claude Code needs for its own
+    /// login, while excluding keys, alternate API origins, telemetry controls,
+    /// hooks and proxy variables inherited from a launcher. Network routing is
+    /// left to macOS rather than made mutable through this process environment.
+    static func sanitizedEnvironment(
+        profile: ClaudeProfile,
+        source: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String: String] {
+        let allowed = ["HOME", "USER", "LOGNAME", "TMPDIR", "PATH", "SHELL", "LANG", "LC_ALL"]
+        var environment = allowed.reduce(into: [String: String]()) { result, key in
+            if let value = source[key] { result[key] = value }
+        }
+        environment["PATH"] = environment["PATH"]
+            ?? "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        environment["HOME"] = environment["HOME"] ?? NSHomeDirectory()
+        environment["TMPDIR"] = environment["TMPDIR"] ?? NSTemporaryDirectory()
+        environment["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+        environment["ENABLE_CLAUDEAI_MCP_SERVERS"] = "false"
+        environment["CLAUDE_CODE_DISABLE_ARTIFACT"] = "1"
+        environment["CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL"] = "1"
+
+        // Only for a named profile. Pointing the variable at `~/.claude`
+        // explicitly is not the same as leaving it unset — Claude Code reads
+        // `.claude.json` from beside the home directory when it is unset and
+        // from inside the config directory when it is set, so setting it for
+        // the default profile would send it looking in the wrong place.
+        if profile.slug != nil {
+            environment["CLAUDE_CONFIG_DIR"] = profile.configDirectory.path
+        }
+        return environment
     }
 
     // MARK: - Reading what it said
