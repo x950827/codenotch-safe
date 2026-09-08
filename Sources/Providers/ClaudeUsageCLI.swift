@@ -175,7 +175,7 @@ struct ClaudeUsageCLI: Sendable {
                 // archived under one source still matches when the other takes
                 // over — the archive keys on the window id and the tooltip
                 // shows the label, and two spellings would read as two windows.
-                label: UsageResponse.label(forKind: kind),
+                label: ClaudeUsageLabels.label(forKind: kind),
                 usedFraction: percent / 100,
                 // Kept even when the date is unparseable. `resetsAt` is
                 // optional by design, and losing a percentage that parsed
@@ -191,7 +191,7 @@ struct ClaudeUsageCLI: Sendable {
         guard windows.contains(where: { $0.id == "session" }) else {
             throw UsageProviderError.badResponse(status: 0)
         }
-        return windows.sorted(by: UsageResponse.displayOrder)
+        return windows.sorted(by: ClaudeUsageLabels.displayOrder)
     }
 
     /// `all models` → `weekly_all`, `Opus` → `weekly_opus`. The endpoint's own
