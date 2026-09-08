@@ -36,7 +36,7 @@ final class CursorActivityMonitor: ObservableObject, AgentActivityMonitor {
     private let staleAfter: TimeInterval
     private var timer: Timer?
 
-    init(store: URL = CursorCredentials.storeURL,
+    init(store: URL = CursorEditorCredentials.storeURL,
          interval: TimeInterval = 2,
          staleAfter: TimeInterval = 15 * 60) {
         self.store = store
@@ -85,7 +85,7 @@ final class CursorActivityMonitor: ObservableObject, AgentActivityMonitor {
     /// window alone decides, which is the behaviour we had before this check.
     static func cursorLaunchDate() -> Date? {
         let running = NSWorkspace.shared.runningApplications
-        let cursor = running.first { $0.bundleIdentifier == CursorCredentials.bundleID }
+        let cursor = running.first { $0.bundleIdentifier == CursorEditorCredentials.bundleID }
             ?? running.first { $0.bundleURL?.lastPathComponent == "Cursor.app" }
         return launchDate(found: cursor != nil, launchDate: cursor?.launchDate)
     }

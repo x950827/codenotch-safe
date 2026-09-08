@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 /// One Claude Code configuration directory, and so one account.
@@ -146,41 +145,6 @@ struct ClaudeProfile: Equatable, Hashable {
               !address.isEmpty
         else { return nil }
         return address
-    }
-
-    /// Every keychain service a profile's token might be filed under, in the
-    /// order to prefer them — newest wins across the lot at read time.
-    ///
-    /// A profile's token is filed under the bare name plus a suffix: the first
-    /// eight hex digits of the SHA-256 of the directory's absolute path, no
-    /// trailing slash. That is Claude Code's rule, not ours. The subtlety is
-    /// *when* Claude Code applies it to the default directory: it suffixes
-    /// whenever `CLAUDE_CONFIG_DIR` is set in the shell it runs from, and a
-    /// shell that exports the variable exports it even when it points at the
-    /// default `~/.claude` — so the default profile's live token can sit under
-    /// `Claude Code-credentials-<hash of ~/.claude>` rather than the bare name.
-    /// Older Claude Code, and an unset variable, keep the bare name for the
-    /// default. Reading only the bare name therefore finds a stale, months-old
-    /// duplicate on such a machine and the ring waits for a first reading that
-    /// never comes, while a current token sits one service name away.
-    ///
-    /// So the default profile offers both, suffixed first; a named profile is
-    /// only ever written suffixed. `KeychainItem.newest(services:)` picks the
-    /// most recently written item across them.
-    var keychainServices: [String] {
-        let suffixed = "\(Self.defaultKeychainService)-\(Self.keychainSuffix(forPath: configDirectory.path))"
-        return slug == nil ? [suffixed, Self.defaultKeychainService] : [suffixed]
-    }
-
-    /// The primary service — the first candidate. Retained for callers and
-    /// tests that name a single service.
-    var keychainService: String { keychainServices.first! }
-
-    static let defaultKeychainService = "Claude Code-credentials"
-
-    static func keychainSuffix(forPath path: String) -> String {
-        let digest = SHA256.hash(data: Data(path.utf8))
-        return digest.map { String(format: "%02x", $0) }.joined().prefix(8).description
     }
 
     // MARK: - Copy

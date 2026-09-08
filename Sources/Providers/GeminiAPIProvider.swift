@@ -22,7 +22,7 @@ actor GeminiAPIProvider: UsageProvider {
 
     nonisolated let id = GeminiAPIProvider.providerID
     nonisolated let displayName = GeminiAPIProvider.providerName
-    // The Gemini sparkle, not Antigravity's arch: this row is the model API,
+    // The Gemini mark, not Antigravity's arch: this row is the model API,
     // and the arch is the editor's own mark, which the neighbouring provider
     // already wears.
     nonisolated let glyph = ProviderGlyph.geminiSpark

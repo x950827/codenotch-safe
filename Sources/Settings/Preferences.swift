@@ -231,7 +231,8 @@ final class Preferences: ObservableObject {
     private static let previousDomain = "com.vinz.usagenotch"
 
     static func migrateFromPreviousName(into defaults: UserDefaults = .standard,
-                                        from domain: String = previousDomain) {
+                                        from requestedDomain: String? = nil) {
+        let domain = requestedDomain ?? previousDomain
         // The emptiness test has to be about the object being written to, not
         // about `Bundle.main` — under test those are different domains, and the
         // first version happily copied real settings into a test's scratch
@@ -343,7 +344,7 @@ final class Preferences: ObservableObject {
     /// Nothing but the app itself can clean that up, so the app has to offer it.
     ///
     /// Not tied to uninstalling: a reinstall is indistinguishable from an
-    /// update, and wiping data on every Sparkle update would be catastrophic.
+    /// update, and wiping data on every application update would be catastrophic.
     /// It has to be something the user asks for.
     static func eraseAllData() {
         let bundleID = Bundle.main.bundleIdentifier ?? "com.vinz.codenotch"

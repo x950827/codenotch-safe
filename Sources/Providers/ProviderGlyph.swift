@@ -10,12 +10,12 @@ enum ProviderGlyph: String, Codable, Equatable {
     /// written under, and renaming it would make every stored reading for this
     /// provider undecodable.
     case antigravity = "gemini"
-    /// Gemini's own sparkle, for the provider that meters a raw API key.
+    /// Gemini's own four-point mark, retained for archive compatibility.
     ///
     /// It cannot be called `gemini`: that raw value already names Antigravity's
     /// arch inside every archived snapshot, and swapping its meaning would
     /// redraw old readings as a mark they were never written for. So the
-    /// sparkle gets a key of its own instead.
+    /// mark gets a key of its own instead.
     case geminiSpark = "gemini-spark"
     case glm
     case grok
