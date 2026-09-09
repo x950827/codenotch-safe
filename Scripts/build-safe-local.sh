@@ -7,7 +7,9 @@ mode=${1:-build}
 build_root="$repo_root/build/safe"
 bundle="$build_root/Codenotch.app"
 executable="$bundle/Contents/MacOS/Codenotch"
+status_line_helper="$bundle/Contents/MacOS/CodenotchClaudeStatusLine"
 module_cache="$build_root/module-cache"
+helper_module_cache="$build_root/helper-module-cache"
 
 source_files=()
 while IFS= read -r -d '' source; do
@@ -47,8 +49,22 @@ common_flags=(
     -module-cache-path "$module_cache"
 )
 
+helper_sources=(
+    "$repo_root/Sources/Safe/ClaudeStatusLineRecord.swift"
+    "$repo_root/Tools/ClaudeStatusLineBridge/main.swift"
+)
+helper_flags=(
+    -parse-as-library
+    -module-name CodenotchClaudeStatusLine
+    -sdk "$sdk_path"
+    -target "arm64-apple-macosx${deployment_target}"
+    -module-cache-path "$helper_module_cache"
+)
+
 if [[ "$mode" == "--typecheck" ]]; then
     /usr/bin/xcrun swiftc -typecheck "${common_flags[@]}" "${source_files[@]}"
+    /bin/mkdir -p "$helper_module_cache"
+    /usr/bin/xcrun swiftc -typecheck "${helper_flags[@]}" "${helper_sources[@]}"
     exit 0
 fi
 if [[ "$mode" != "build" ]]; then
@@ -62,6 +78,9 @@ fi
 /usr/bin/xcrun swiftc -O "${common_flags[@]}" "${source_files[@]}" \
     -lsqlite3 \
     -o "$executable"
+/bin/mkdir -p "$helper_module_cache"
+/usr/bin/xcrun swiftc -O "${helper_flags[@]}" "${helper_sources[@]}" \
+    -o "$status_line_helper"
 
 /bin/cp "$repo_root/Sources/Assets.xcassets/MenuBarIcon.imageset/menubar-codenotch.svg" \
     "$bundle/Contents/Resources/MenuBarIcon.svg"
@@ -77,18 +96,23 @@ fi
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
     <key>CFBundleName</key><string>Codenotch Safe</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.6.0-safe.2</string>
-    <key>CFBundleVersion</key><string>2</string>
+    <key>CFBundleShortVersionString</key><string>1.6.0-safe.4</string>
+    <key>CFBundleVersion</key><string>4</string>
     <key>LSMinimumSystemVersion</key><string>$deployment_target</string>
 </dict>
 </plist>
 PLIST
 
-# Documents may be backed by File Provider, which adds Finder metadata to new
-# directories. codesign correctly rejects that metadata inside an app bundle.
-/usr/bin/xattr -cr "$bundle"
-/usr/bin/codesign --force --deep --sign - "$bundle"
-# File Provider recognizes the freshly signed directory as an app package and
-# may attach FinderInfo at that point, so clear package metadata once more.
-/usr/bin/xattr -cr "$bundle"
+# Documents may be backed by File Provider, which can reattach Finder metadata
+# in the tiny interval between clearing attributes and signing. Sign a copy in
+# a non-File-Provider directory, then copy the sealed contents back without
+# resource metadata. The verifier repeats the copy and validates the signature.
+signing_staging=$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/codenotch-sign.XXXXXX")
+trap '/bin/rm -rf "$signing_staging"' EXIT
+staged_bundle="$signing_staging/Codenotch.app"
+/usr/bin/ditto --norsrc "$bundle" "$staged_bundle"
+/usr/bin/xattr -cr "$staged_bundle"
+/usr/bin/codesign --force --deep --sign - "$staged_bundle"
+/bin/rm -rf "$bundle"
+/usr/bin/ditto --norsrc "$staged_bundle" "$bundle"
 print "built $bundle"

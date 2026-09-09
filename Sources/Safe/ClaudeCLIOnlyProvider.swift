@@ -12,9 +12,8 @@ enum SafeClaudeProfiles {
     }
 }
 
-/// Reads Claude limits from Claude Code's own output or its dated local usage
-/// cache. This type has no credential loader and cannot fall back to a keychain
-/// or bearer-token path.
+/// Reads Claude limits from Claude Code's status-line feed, its own `/usage`
+/// output, the narrowly audited OAuth usage reader, or dated local caches.
 actor ClaudeCLIOnlyProvider: UsageProvider {
     nonisolated let profile: ClaudeProfile
     nonisolated let id: String
@@ -22,12 +21,17 @@ actor ClaudeCLIOnlyProvider: UsageProvider {
     nonisolated let glyph = ProviderGlyph.claude
 
     private let cli: ClaudeUsageCLI?
+    private let statusLineCache: SafeClaudeStatusLineCache?
+    private let oauth: (@Sendable () async throws -> [LimitWindow])?
     private let cache: SafeClaudeUsageCache?
 
     init(profile: ClaudeProfile = .default()) {
+        let oauth = SafeClaudeOAuthUsage(profile: profile)
         self.init(
             profile: profile,
             cli: ClaudeUsageCLI.locate(),
+            statusLineCache: SafeClaudeStatusLineCache(profile: profile),
+            oauth: { try await oauth.fetch() },
             cache: SafeClaudeUsageCache(profile: profile)
         )
     }
@@ -36,19 +40,57 @@ actor ClaudeCLIOnlyProvider: UsageProvider {
         self.init(
             profile: profile,
             cli: cli,
+            statusLineCache: SafeClaudeStatusLineCache(profile: profile),
+            oauth: nil,
             cache: SafeClaudeUsageCache(profile: profile)
         )
     }
 
-    init(profile: ClaudeProfile, cli: ClaudeUsageCLI?, cache: SafeClaudeUsageCache?) {
+    init(
+        profile: ClaudeProfile,
+        cli: ClaudeUsageCLI?,
+        statusLineCache: SafeClaudeStatusLineCache?,
+        cache: SafeClaudeUsageCache?
+    ) {
+        self.init(
+            profile: profile,
+            cli: cli,
+            statusLineCache: statusLineCache,
+            oauth: nil,
+            cache: cache
+        )
+    }
+
+    init(
+        profile: ClaudeProfile,
+        cli: ClaudeUsageCLI?,
+        statusLineCache: SafeClaudeStatusLineCache?,
+        oauth: (@Sendable () async throws -> [LimitWindow])?,
+        cache: SafeClaudeUsageCache?
+    ) {
         self.profile = profile
         self.id = profile.id
         self.displayName = profile.displayName
         self.cli = cli
+        self.statusLineCache = statusLineCache
+        self.oauth = oauth
         self.cache = cache
     }
 
+    init(profile: ClaudeProfile, cli: ClaudeUsageCLI?, cache: SafeClaudeUsageCache?) {
+        self.init(profile: profile, cli: cli, statusLineCache: nil, cache: cache)
+    }
+
     func fetchSnapshot() async throws -> ProviderSnapshot {
+        let statusLineReading = try? statusLineCache?.read()
+        if let reading = statusLineReading,
+           Date().timeIntervalSince(reading.capturedAt) <= SafeClaudeStatusLineCache.freshFor {
+            Log.usage.debug(
+                "claude: read \(reading.windows.count) normalized windows from live status line"
+            )
+            return snapshot(windows: reading.windows, status: .ok)
+        }
+
         if let cli {
             do {
                 let windows = try await cli.read(profile: profile)
@@ -56,10 +98,33 @@ actor ClaudeCLIOnlyProvider: UsageProvider {
                 return snapshot(windows: windows, status: .ok)
             } catch {
                 // Recent Claude Code releases accept `/usage` in print mode but
-                // emit only per-command cost statistics. The settings cache is
-                // the bounded fallback; no credential source is attempted.
-                Log.usage.debug("claude: CLI did not return usage windows; checking local cache")
+                // emit only per-command cost statistics.
+                Log.usage.debug("claude: CLI did not return usage windows; checking audited OAuth")
             }
+        }
+
+        var oauthError: Error?
+        if let oauth {
+            do {
+                let windows = try await oauth()
+                guard !windows.isEmpty else {
+                    throw SafeClaudeOAuthBoundaryError.missingUsageWindows
+                }
+                return snapshot(windows: windows, status: .ok)
+            } catch {
+                oauthError = error
+                Log.usage.debug("claude: audited OAuth unavailable; checking dated caches")
+            }
+        }
+
+        if let reading = statusLineReading {
+            Log.usage.debug(
+                "claude: read \(reading.windows.count) normalized windows from dated status line"
+            )
+            return snapshot(
+                windows: reading.windows,
+                status: .stale(since: reading.capturedAt)
+            )
         }
 
         if let cache, let reading = try? cache.read() {
@@ -71,6 +136,8 @@ actor ClaudeCLIOnlyProvider: UsageProvider {
                 status: .stale(since: reading.fetchedAt)
             )
         }
+
+        if let oauthError { throw oauthError }
 
         throw UsageProviderError.needsAuth
     }

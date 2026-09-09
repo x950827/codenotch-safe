@@ -216,6 +216,115 @@ final class SecurityBoundaryTests: XCTestCase {
         XCTAssertNil(environment["HTTP_PROXY"])
     }
 
+    func testClaudeOAuthRequestIsExactAndHasOnlyRequiredHeaders() throws {
+        let request = try SafeClaudeOAuthUsage.makeRequest(token: "fixture-token")
+
+        XCTAssertEqual(request.url?.absoluteString,
+                       "https://api.anthropic.com/api/oauth/usage")
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertNil(request.httpBody)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"),
+                       "Bearer fixture-token")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "anthropic-beta"),
+                       "oauth-2025-04-20")
+        XCTAssertEqual(Set(request.allHTTPHeaderFields?.keys.map { $0 } ?? []),
+                       ["Authorization", "anthropic-beta"])
+    }
+
+    func testClaudeOAuthResponseKeepsOnlyUsageWindows() throws {
+        let json = #"""
+        {
+          "account_uuid": "must-not-be-read",
+          "five_hour": {
+            "utilization": 26,
+            "resets_at": "2099-01-01T05:00:00Z",
+            "secret": "must-not-be-read"
+          },
+          "seven_day": {
+            "utilization": 18,
+            "resets_at": "2099-01-07T00:00:00Z"
+          }
+        }
+        """#
+
+        let windows = try SafeClaudeOAuthUsage.parse(Data(json.utf8))
+
+        XCTAssertEqual(windows.map(\.id), ["session", "weekly_all"])
+        XCTAssertEqual(windows.map(\.usedFraction), [0.26, 0.18])
+        XCTAssertEqual(windows.map(\.label), ["Current session", "All models"])
+    }
+
+    func testClaudeOAuthCredentialDecoderIgnoresEverythingButLoginFields() throws {
+        let json = #"""
+        {
+          "claudeAiOauth": {
+            "accessToken": "fixture-token",
+            "expiresAt": 4102444800000,
+            "subscriptionType": "team",
+            "refreshToken": "must-not-be-read"
+          },
+          "otherAccount": {"token": "must-not-be-read"}
+        }
+        """#
+
+        let credential = try SafeClaudeOAuthUsage.parseCredential(Data(json.utf8))
+
+        XCTAssertEqual(credential.accessToken, "fixture-token")
+        XCTAssertEqual(credential.expiresAt,
+                       Date(timeIntervalSince1970: 4_102_444_800))
+    }
+
+    func testClaudeOAuthUsesOnlyTheDefaultClaudeCodeCredentialServices() {
+        let directory = URL(fileURLWithPath: "/Users/vinz/.claude/")
+
+        XCTAssertEqual(
+            SafeClaudeOAuthUsage.credentialServices(configDirectory: directory),
+            ["Claude Code-credentials-337ba600", "Claude Code-credentials"]
+        )
+    }
+
+    func testClaudeOAuthNamedProfileCannotFallBackToTheDefaultCredential() {
+        let profile = ClaudeProfile(
+            slug: "work",
+            configDirectory: URL(fileURLWithPath: "/Users/vinz/.claude-work")
+        )
+
+        XCTAssertEqual(
+            SafeClaudeOAuthUsage.credentialServices(profile: profile),
+            ["Claude Code-credentials-19914660"]
+        )
+    }
+
+    func testClaudeOAuthEndpointRejectsEveryOriginOrPathChange() throws {
+        let allowed = try XCTUnwrap(
+            URL(string: "https://api.anthropic.com/api/oauth/usage")
+        )
+        XCTAssertTrue(SafeClaudeOAuthUsage.isAllowed(allowed))
+
+        for value in [
+            "http://api.anthropic.com/api/oauth/usage",
+            "https://api.anthropic.com:443/api/oauth/usage",
+            "https://user@api.anthropic.com/api/oauth/usage",
+            "https://api.anthropic.com/api/oauth/usage/",
+            "https://api.anthropic.com/api/oauth/usage?next=1",
+            "https://api.anthropic.com/api/oauth/usage#fragment",
+            "https://example.com/api/oauth/usage",
+        ] {
+            XCTAssertFalse(SafeClaudeOAuthUsage.isAllowed(try XCTUnwrap(URL(string: value))))
+        }
+    }
+
+    func testClaudeOAuthSessionKeepsNothingPersistent() {
+        let configuration = SafeClaudeOAuthUsage.makeConfiguration()
+
+        XCTAssertNil(configuration.httpCookieStorage)
+        XCTAssertNil(configuration.urlCredentialStorage)
+        XCTAssertNil(configuration.urlCache)
+        XCTAssertFalse(configuration.httpShouldSetCookies)
+        XCTAssertEqual(configuration.requestCachePolicy, .reloadIgnoringLocalCacheData)
+        XCTAssertEqual(configuration.connectionProxyDictionary?.isEmpty, true)
+    }
+
     func testClaudeCacheParsesOnlyKnownUsageWindows() throws {
         let json = #"""
         {
@@ -265,6 +374,81 @@ final class SecurityBoundaryTests: XCTestCase {
         XCTAssertThrowsError(try SafeClaudeUsageCache.parse(Data(malformed.utf8)))
     }
 
+    func testClaudeStatusLineCaptureKeepsOnlyNormalizedRateLimits() throws {
+        let input = #"""
+        {
+          "session_id": "must-not-be-stored",
+          "transcript_path": "/private/must-not-be-stored.jsonl",
+          "account": {"token": "must-not-be-stored"},
+          "rate_limits": {
+            "five_hour": {
+              "used_percentage": "11",
+              "resets_at": "1800016200.25",
+              "secret": "must-not-be-stored"
+            },
+            "seven_day": {"used_percentage": 18, "resets_at": 1800259200},
+            "seven_day_opus": null,
+            "seven_day_sonnet": {"used_percentage": 7}
+          }
+        }
+        """#
+        let capturedAt = Date(timeIntervalSince1970: 1_800_000_000.123)
+
+        let record = try ClaudeStatusLineRecord.capture(
+            Data(input.utf8),
+            capturedAt: capturedAt
+        )
+        let encoded = try record.encoded()
+        let persisted = String(decoding: encoded, as: UTF8.self)
+
+        XCTAssertEqual(record.capturedAt, capturedAt)
+        XCTAssertEqual(record.fiveHour?.usedPercentage, 11)
+        XCTAssertEqual(record.sevenDay?.usedPercentage, 18)
+        XCTAssertEqual(record.sevenDaySonnet?.usedPercentage, 7)
+        XCTAssertNil(record.sevenDayOpus)
+        XCTAssertFalse(persisted.contains("session_id"))
+        XCTAssertFalse(persisted.contains("transcript"))
+        XCTAssertFalse(persisted.contains("token"))
+        XCTAssertFalse(persisted.contains("secret"))
+    }
+
+    func testClaudeStatusLineCacheMapsLiveFiveHourWindow() throws {
+        let input = #"{"rate_limits":{"five_hour":{"used_percentage":11,"resets_at":1800016200.25},"seven_day":{"used_percentage":18,"resets_at":1800259200}}}"#
+        let capturedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let record = try ClaudeStatusLineRecord.capture(
+            Data(input.utf8),
+            capturedAt: capturedAt
+        )
+        let cache = SafeClaudeStatusLineCache(data: { try record.encoded() })
+
+        let reading = try cache.read(now: capturedAt.addingTimeInterval(30))
+
+        XCTAssertEqual(reading.capturedAt, capturedAt)
+        XCTAssertEqual(reading.windows.map(\.id), ["session", "weekly_all"])
+        XCTAssertEqual(reading.windows.map(\.usedFraction), [0.11, 0.18])
+        XCTAssertEqual(reading.windows[0].resetsAt,
+                       Date(timeIntervalSince1970: 1_800_016_200.25))
+    }
+
+    func testClaudeStatusLineCacheRejectsExpiredSessionWindow() throws {
+        let input = #"{"rate_limits":{"five_hour":{"used_percentage":11,"resets_at":1800000060}}}"#
+        let record = try ClaudeStatusLineRecord.capture(
+            Data(input.utf8),
+            capturedAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        let cache = SafeClaudeStatusLineCache(data: { try record.encoded() })
+
+        XCTAssertThrowsError(
+            try cache.read(now: Date(timeIntervalSince1970: 1_800_000_061))
+        )
+        XCTAssertThrowsError(
+            try ClaudeStatusLineRecord.capture(
+                Data(input.utf8),
+                capturedAt: Date(timeIntervalSince1970: 1_800_000_061)
+            )
+        )
+    }
+
     func testClaudeProviderPrefersAValidCLIReading() async throws {
         let profile = ClaudeProfile.default(
             home: URL(fileURLWithPath: "/tmp/codenotch-safe-claude-profile")
@@ -283,6 +467,68 @@ final class SecurityBoundaryTests: XCTestCase {
         XCTAssertEqual(snapshot.windows.map(\.id), ["session"])
         XCTAssertEqual(snapshot.windows.first?.usedFraction, 0.34)
         XCTAssertEqual(snapshot.headlineID, "session")
+        XCTAssertEqual(snapshot.status, .ok)
+    }
+
+    func testClaudeProviderPrefersFreshStatusLineReadingOverCLI() async throws {
+        let profile = ClaudeProfile.default(
+            home: URL(fileURLWithPath: "/tmp/codenotch-safe-claude-status-line")
+        )
+        let capturedAt = Date()
+        let input = #"{"rate_limits":{"five_hour":{"used_percentage":11,"resets_at":4102444800},"seven_day":{"used_percentage":18,"resets_at":4102444800}}}"#
+        let record = try ClaudeStatusLineRecord.capture(
+            Data(input.utf8),
+            capturedAt: capturedAt
+        )
+        let statusLineCache = SafeClaudeStatusLineCache(data: { try record.encoded() })
+        let cli = ClaudeUsageCLI(binary: URL(fileURLWithPath: "/fake/claude")) { _ in
+            "Current session: 34% used"
+        }
+        let vendorCache = SafeClaudeUsageCache(data: {
+            Data(#"{"cachedUsageUtilization":{"fetchedAtMs":1800000000000,"utilization":{"five_hour":{"utilization":91}}}}"#.utf8)
+        })
+        let provider = ClaudeCLIOnlyProvider(
+            profile: profile,
+            cli: cli,
+            statusLineCache: statusLineCache,
+            cache: vendorCache
+        )
+
+        let snapshot = try await provider.fetchSnapshot()
+
+        XCTAssertEqual(snapshot.windows.map(\.usedFraction), [0.11, 0.18])
+        XCTAssertEqual(snapshot.status, .ok)
+    }
+
+    func testClaudeProviderUsesAuditedOAuthBeforeDatedCaches() async throws {
+        let profile = ClaudeProfile.default(
+            home: URL(fileURLWithPath: "/tmp/codenotch-safe-claude-oauth")
+        )
+        let cli = ClaudeUsageCLI(binary: URL(fileURLWithPath: "/fake/claude")) { _ in
+            "print mode returned session cost instead of usage limits"
+        }
+        let vendorCache = SafeClaudeUsageCache(data: {
+            Data(#"{"cachedUsageUtilization":{"fetchedAtMs":1800000000000,"utilization":{"five_hour":{"utilization":43}}}}"#.utf8)
+        })
+        let oauth: @Sendable () async throws -> [LimitWindow] = {
+            [LimitWindow(
+                id: "session",
+                label: "Current session",
+                usedFraction: 0.26,
+                resetsAt: Date(timeIntervalSince1970: 4_102_444_800)
+            )]
+        }
+        let provider = ClaudeCLIOnlyProvider(
+            profile: profile,
+            cli: cli,
+            statusLineCache: nil,
+            oauth: oauth,
+            cache: vendorCache
+        )
+
+        let snapshot = try await provider.fetchSnapshot()
+
+        XCTAssertEqual(snapshot.windows.map(\.usedFraction), [0.26])
         XCTAssertEqual(snapshot.status, .ok)
     }
 
@@ -317,7 +563,7 @@ final class SecurityBoundaryTests: XCTestCase {
             _ = try await provider.fetchSnapshot()
             XCTFail("missing Claude CLI and cache must require authentication in Claude Code")
         } catch UsageProviderError.needsAuth {
-            // Expected: there is deliberately no token or keychain fallback.
+            // Expected: this test injects no OAuth or cache fallback.
         } catch {
             XCTFail("expected needsAuth, got \(error)")
         }
