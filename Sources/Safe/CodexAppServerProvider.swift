@@ -3,11 +3,54 @@ import Foundation
 /// The complete JSONL conversation Codenotch is allowed to initiate with
 /// Codex. It asks for no account details, threads, messages, or credentials.
 enum CodexAppServerProtocol {
-    static let input = [
-        #"{"method":"initialize","id":0,"params":{"clientInfo":{"name":"codenotch_safe_local","title":"Codenotch Safe Local","version":"1.0.0"}}}"#,
-        #"{"method":"initialized","params":{}}"#,
-        #"{"method":"account/rateLimits/read","id":1}"#,
-    ].joined(separator: "\n") + "\n"
+    private static let initialize =
+        #"{"method":"initialize","id":0,"params":{"clientInfo":{"name":"codenotch_safe_local","title":"Codenotch Safe Local","version":"1.0.0"}}}"#
+    private static let initialized = #"{"method":"initialized","params":{}}"#
+    private static let readRateLimits = #"{"method":"account/rateLimits/read","id":1}"#
+
+    /// Kept as one inspectable value for the security test. Production sends
+    /// these same messages in order, but waits for response 0 before the final
+    /// two and keeps stdin open until response 1 arrives.
+    static let input = [initialize, initialized, readRateLimits]
+        .joined(separator: "\n") + "\n"
+
+    static func exchange(
+        send: (String) throws -> Void,
+        receive: () throws -> String?,
+        closeInput: () -> Void
+    ) throws -> [LimitWindow] {
+        defer { closeInput() }
+
+        try send(initialize)
+        _ = try response(id: 0, receive: receive)
+
+        try send(initialized)
+        try send(readRateLimits)
+        let rateLimitResponse = try response(id: 1, receive: receive)
+        return try parse(rateLimitResponse)
+    }
+
+    /// Wait for one matching response while ignoring notifications and replies
+    /// to other ids. Closing stdin before this returns lets current app-server
+    /// versions shut down before their asynchronous rate-limit read completes.
+    private static func response(
+        id: Int,
+        receive: () throws -> String?
+    ) throws -> String {
+        while let line = try receive() {
+            guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)),
+                  let message = object as? [String: Any],
+                  (message["id"] as? NSNumber)?.intValue == id
+            else { continue }
+
+            if message["error"] != nil { throw UsageProviderError.needsAuth }
+            guard message["result"] != nil else {
+                throw UsageProviderError.badResponse(status: 0)
+            }
+            return line
+        }
+        throw UsageProviderError.badResponse(status: 0)
+    }
 
     static func parse(_ output: String) throws -> [LimitWindow] {
         for line in output.split(whereSeparator: \Character.isNewline) {
@@ -108,8 +151,6 @@ struct CodexAppServerExecutable: Sendable {
         process.standardError = FileHandle.nullDevice
 
         try process.run()
-        input.fileHandleForWriting.write(Data(CodexAppServerProtocol.input.utf8))
-        input.fileHandleForWriting.closeFile()
 
         let watchdog = DispatchWorkItem {
             if process.isRunning { process.terminate() }
@@ -118,15 +159,28 @@ struct CodexAppServerExecutable: Sendable {
             .asyncAfter(deadline: .now() + Self.timeout, execute: watchdog)
         defer { watchdog.cancel() }
 
-        let data = output.fileHandleForReading.readDataToEndOfFile()
+        let writer = input.fileHandleForWriting
+        let reader = CodexJSONLineReader(handle: output.fileHandleForReading)
+        let windows: [LimitWindow]
+        do {
+            windows = try CodexAppServerProtocol.exchange(
+                send: { message in
+                    writer.write(Data((message + "\n").utf8))
+                },
+                receive: { reader.next() },
+                closeInput: { writer.closeFile() }
+            )
+        } catch {
+            if process.isRunning { process.terminate() }
+            process.waitUntilExit()
+            throw error
+        }
+
         process.waitUntilExit()
         guard process.terminationReason == .exit, process.terminationStatus == 0 else {
             throw UsageProviderError.badResponse(status: Int(process.terminationStatus))
         }
-        guard let text = String(data: data, encoding: .utf8), !text.isEmpty else {
-            throw UsageProviderError.badResponse(status: 0)
-        }
-        return try CodexAppServerProtocol.parse(text)
+        return windows
     }
 
     /// Preserve ordinary locale and network routing while preventing API keys
@@ -146,6 +200,36 @@ struct CodexAppServerExecutable: Sendable {
         environment["HOME"] = environment["HOME"] ?? NSHomeDirectory()
         environment["TMPDIR"] = environment["TMPDIR"] ?? NSTemporaryDirectory()
         return environment
+    }
+}
+
+/// Incremental newline framing for app-server stdout. `readDataToEndOfFile`
+/// cannot be used here because stdin must remain open while the requested
+/// response is pending, so neither side would be able to finish first.
+private final class CodexJSONLineReader {
+    private let handle: FileHandle
+    private var buffer = Data()
+
+    init(handle: FileHandle) {
+        self.handle = handle
+    }
+
+    func next() -> String? {
+        while true {
+            if let newline = buffer.firstIndex(of: 0x0A) {
+                let line = Data(buffer[..<newline])
+                buffer.removeSubrange(...newline)
+                return String(data: line, encoding: .utf8)
+            }
+
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                guard !buffer.isEmpty else { return nil }
+                defer { buffer.removeAll(keepingCapacity: false) }
+                return String(data: buffer, encoding: .utf8)
+            }
+            buffer.append(chunk)
+        }
     }
 }
 
