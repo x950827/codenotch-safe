@@ -45,6 +45,42 @@ final class SecurityBoundaryTests: XCTestCase {
         XCTAssertNil(messages[2]["params"])
     }
 
+    func testCodexHandshakeKeepsInputOpenUntilTheRateLimitResponse() throws {
+        var events: [String] = []
+        var replies = [
+            #"{"id":0,"result":{"userAgent":"test"}}"#,
+            #"{"method":"remoteControl/status/changed","params":{}}"#,
+            #"{"id":1,"result":{"rateLimits":{"primary":{"usedPercent":25,"windowDurationMins":300}}}}"#,
+        ]
+
+        let windows = try CodexAppServerProtocol.exchange(
+            send: { message in
+                let object = try XCTUnwrap(
+                    JSONSerialization.jsonObject(with: Data(message.utf8)) as? [String: Any]
+                )
+                events.append("send:\(try XCTUnwrap(object["method"] as? String))")
+            },
+            receive: {
+                events.append("receive")
+                return replies.isEmpty ? nil : replies.removeFirst()
+            },
+            closeInput: {
+                events.append("close")
+            }
+        )
+
+        XCTAssertEqual(events, [
+            "send:initialize",
+            "receive",
+            "send:initialized",
+            "send:account/rateLimits/read",
+            "receive",
+            "receive",
+            "close",
+        ])
+        XCTAssertEqual(windows.first?.usedFraction, 0.25)
+    }
+
     func testCodexParserSelectsOnlyResponseOneAndPrefersCodexBucket() throws {
         let output = """
         {"method":"account/rateLimits/updated","params":{"rateLimits":{"primary":{"usedPercent":99}}}}
