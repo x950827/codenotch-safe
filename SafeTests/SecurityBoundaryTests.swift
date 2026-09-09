@@ -75,6 +75,36 @@ final class SecurityBoundaryTests: XCTestCase {
         XCTAssertEqual(CodexAppServerExecutable.arguments, ["app-server"])
     }
 
+    func testCodexExecutablePrefersTheBundledChatGPTBinaryOverUserWrappers() throws {
+        let sandbox = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codenotch-codex-locator-\(UUID().uuidString)")
+        let home = sandbox.appendingPathComponent("home")
+        defer { try? FileManager.default.removeItem(at: sandbox) }
+
+        let bundled = sandbox
+            .appendingPathComponent("Applications/ChatGPT.app/Contents/Resources/codex")
+        let wrapper = home.appendingPathComponent(".local/bin/codex")
+        for candidate in [bundled, wrapper] {
+            try FileManager.default.createDirectory(
+                at: candidate.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try Data("#!/bin/sh\n".utf8).write(to: candidate)
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o755],
+                ofItemAtPath: candidate.path
+            )
+        }
+
+        let executable = try XCTUnwrap(CodexAppServerExecutable.locate(
+            home: home,
+            root: sandbox
+        ))
+
+        XCTAssertEqual(executable.binary.standardizedFileURL,
+                       bundled.standardizedFileURL)
+    }
+
     func testCodexProviderUsesInjectedAppServerReader() async throws {
         let provider = CodexAppServerProvider(readWindows: {
             [LimitWindow(id: "primary", label: "5h limit", usedFraction: 0.21)]
@@ -150,14 +180,66 @@ final class SecurityBoundaryTests: XCTestCase {
         XCTAssertNil(environment["HTTP_PROXY"])
     }
 
-    func testClaudeProviderUsesOnlyTheInjectedCLI() async throws {
+    func testClaudeCacheParsesOnlyKnownUsageWindows() throws {
+        let json = #"""
+        {
+          "cachedUsageUtilization": {
+            "accountUuid": "must-not-be-read",
+            "fetchedAtMs": 1800000000123,
+            "utilization": {
+              "five_hour": {
+                "utilization": 43,
+                "resets_at": "2027-01-15T12:30:00.250000+00:00",
+                "locked_reason": "ignored"
+              },
+              "seven_day": {
+                "utilization": 16,
+                "resets_at": "2027-01-18T08:00:00+00:00"
+              },
+              "seven_day_opus": null,
+              "seven_day_sonnet": {"utilization": 7},
+              "unknown_limit": {"utilization": 99, "secret": "ignored"}
+            }
+          }
+        }
+        """#
+
+        let reading = try SafeClaudeUsageCache.parse(Data(json.utf8))
+
+        XCTAssertEqual(reading.fetchedAt,
+                       Date(timeIntervalSince1970: 1_800_000_000.123))
+        XCTAssertEqual(reading.windows.map(\.id), [
+            "session", "weekly_all", "weekly_sonnet",
+        ])
+        XCTAssertEqual(reading.windows.map(\.label), [
+            "Current session", "All models", "Sonnet",
+        ])
+        XCTAssertEqual(reading.windows.map(\.usedFraction), [0.43, 0.16, 0.07])
+        XCTAssertEqual(reading.windows[0].resetsAt,
+                       Date(timeIntervalSince1970: 1_800_016_200.25))
+        XCTAssertEqual(reading.windows[1].resetsAt,
+                       Date(timeIntervalSince1970: 1_800_259_200))
+    }
+
+    func testClaudeCacheRejectsMissingOrMalformedSessionUsage() {
+        let missing = #"{"cachedUsageUtilization":{"fetchedAtMs":1800000000000,"utilization":{"seven_day":{"utilization":10}}}}"#
+        let malformed = #"{"cachedUsageUtilization":{"fetchedAtMs":1800000000000,"utilization":{"five_hour":{"utilization":"secret"}}}}"#
+
+        XCTAssertThrowsError(try SafeClaudeUsageCache.parse(Data(missing.utf8)))
+        XCTAssertThrowsError(try SafeClaudeUsageCache.parse(Data(malformed.utf8)))
+    }
+
+    func testClaudeProviderPrefersAValidCLIReading() async throws {
         let profile = ClaudeProfile.default(
             home: URL(fileURLWithPath: "/tmp/codenotch-safe-claude-profile")
         )
         let cli = ClaudeUsageCLI(binary: URL(fileURLWithPath: "/fake/claude")) { _ in
             "Current session: 34% used"
         }
-        let provider = ClaudeCLIOnlyProvider(profile: profile, cli: cli)
+        let cache = SafeClaudeUsageCache(data: {
+            Data(#"{"cachedUsageUtilization":{"fetchedAtMs":1800000000000,"utilization":{"five_hour":{"utilization":91}}}}"#.utf8)
+        })
+        let provider = ClaudeCLIOnlyProvider(profile: profile, cli: cli, cache: cache)
 
         let snapshot = try await provider.fetchSnapshot()
 
@@ -165,19 +247,41 @@ final class SecurityBoundaryTests: XCTestCase {
         XCTAssertEqual(snapshot.windows.map(\.id), ["session"])
         XCTAssertEqual(snapshot.windows.first?.usedFraction, 0.34)
         XCTAssertEqual(snapshot.headlineID, "session")
+        XCTAssertEqual(snapshot.status, .ok)
     }
 
-    func testClaudeProviderNeverFallsBackWhenCLIIsUnavailable() async {
+    func testClaudeProviderFallsBackToDatedLocalCache() async throws {
+        let profile = ClaudeProfile.default(
+            home: URL(fileURLWithPath: "/tmp/codenotch-safe-claude-cache")
+        )
+        let fetchedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let cli = ClaudeUsageCLI(binary: URL(fileURLWithPath: "/fake/claude")) { _ in
+            "print mode returned session cost instead of usage limits"
+        }
+        let cache = SafeClaudeUsageCache(data: {
+            Data(#"{"cachedUsageUtilization":{"fetchedAtMs":1800000000000,"utilization":{"five_hour":{"utilization":43},"seven_day":{"utilization":16}}}}"#.utf8)
+        })
+        let provider = ClaudeCLIOnlyProvider(profile: profile, cli: cli, cache: cache)
+
+        let snapshot = try await provider.fetchSnapshot()
+
+        XCTAssertEqual(snapshot.windows.map(\.usedFraction), [0.43, 0.16])
+        XCTAssertEqual(snapshot.status, .stale(since: fetchedAt))
+        XCTAssertEqual(snapshot.headlineID, "session")
+    }
+
+    func testClaudeProviderRequiresAuthWhenCLIAndCacheAreUnavailable() async {
         let provider = ClaudeCLIOnlyProvider(
             profile: .default(home: URL(fileURLWithPath: "/tmp/codenotch-no-claude")),
-            cli: nil
+            cli: nil,
+            cache: nil
         )
 
         do {
             _ = try await provider.fetchSnapshot()
-            XCTFail("a missing Claude CLI must require authentication in Claude Code")
+            XCTFail("missing Claude CLI and cache must require authentication in Claude Code")
         } catch UsageProviderError.needsAuth {
-            // Expected: there is deliberately no token fallback.
+            // Expected: there is deliberately no token or keychain fallback.
         } catch {
             XCTFail("expected needsAuth, got \(error)")
         }
