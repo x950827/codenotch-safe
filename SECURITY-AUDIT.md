@@ -2,29 +2,31 @@
 
 Audit date: 2026-09-09  
 Upstream base: `vinzdg/codenotch` at `6482ce0`  
-Audited implementation commit: `839d907651926170b6ede7aa1c63f3572772239e`  
-Xcode 26 CI validation: pending for the safe.4 candidate  
-Audited executable SHA-256: `90a15beb22420e8556029e6ec6167cf8e50324c9be39f1683041e7f3fef562d2`  
+Audited implementation commit: `e153661919afd4e53551da40d5ee620a77fee242`  
+Xcode 26 CI validation: Safe CI [run #12](https://github.com/x950827/codenotch-safe/actions/runs/34368730509) passed in 3m 5s  
+Audited executable SHA-256: `f153d2502732c4b8e7ad0b80aaef46001fcaafab29a0896b64c33a0d71c9a11c`  
+Audited status-line helper SHA-256: `808a116e07e6dbd51b580ca87c95bfdb173ea5ed514e478cf9a69b68fab8cfae`  
 Bundle identifier: `local.audited.codenotch`  
-Bundle version: `1.6.0-safe.4`
+Bundle version: `1.6.0-safe.7`
 
 ## Verdict
 
-The safe.4 candidate passed its local source, binary, signing, destination, and
-executable boundary gates. Its exact request/parser harness also passed. It has
-not yet been installed because the new Claude fallback reads a Claude Code
-credential from Keychain; installation and final runtime validation require the
-user's explicit approval.
+The safe.7 build passed its local source, binary, signing, destination,
+executable-boundary, parser, and Xcode 26 CI gates. The exact audited bundle is
+installed at `/Applications/Codenotch Safe.app`; strict signature validation
+and installed-file hashes match the verified build.
 
-The earlier 310-second runtime evidence below applies to safe.1. It remains
-useful as a baseline for the unchanged provider polling and UI, but it is not
-runtime evidence for safe.4 and must be replaced after the approved install.
+Live validation completed after the user authorized read-only Keychain access
+and refreshed an expired Claude Code OAuth session with the official
+`claude auth login` flow. Codenotch then fetched and archived fresh normalized
+Claude and Codex limits. A 310-second run of that installed binary met the idle
+CPU and RSS gates and showed only the two expected CLI children.
 
 ## Allowed data flows
 
 | Provider | Local access | External action | Persistence in Codenotch |
 | --- | --- | --- | --- |
-| Claude | Reads the default Claude Code profile's local account label and session-status files. A bundled status-line bridge retains only normalized rate-limit fields. If both local live sources fail, one audited Swift file selects the newest item from the exact default Claude Code credential services and decodes only `accessToken` and `expiresAt`. | Prefers the bridge record, then runs the restricted `claude --print ... /usage` command. The final fallback sends one `GET` to exactly `https://api.anthropic.com/api/oauth/usage`; redirects, cookies, URL credentials, caches and connection proxy overrides are disabled. | The OAuth token is held only in memory until expiry. Only normalized percentages and reset times are archived; raw status-line input, CLI output, Keychain data and response bodies are never stored or logged. |
+| Claude | Reads the default Claude Code profile's local account label and session-status files. A bundled status-line bridge retains only normalized rate-limit fields. If both local live sources fail, one audited Swift file selects the newest item matching both the exact default Claude Code credential service and current-user account, then decodes only `accessToken` and `expiresAt`. | Prefers the bridge record, then runs the restricted `claude --print ... /usage` command. The final fallback sends one `GET` to exactly `https://api.anthropic.com/api/oauth/usage`; redirects, cookies, URL credentials, caches and connection proxy overrides are disabled. | The OAuth token is held only in memory until expiry. Only normalized percentages and reset times are archived; raw status-line input, CLI output, Keychain data and response bodies are never stored or logged. Diagnostic messages name only the failed stage, field path, or fixed validation category. |
 | Cursor | Opens Cursor's editor SQLite store read-only and reads the two values needed to form Cursor's session cookie. Activity comes from `composerHeaders` in the same store. | One `GET` to exactly `https://cursor.com/api/usage-summary`; redirects are rejected. | The session is ephemeral: no cookie jar, credential store, URL cache, response body log, or token persistence. Normalized usage is archived. |
 | Codex | Reads local activity metadata. Codenotch does not read `auth.json` or a bearer token. | Starts the installed `codex app-server` and sends a fixed three-message JSONL exchange: `initialize`, `initialized`, and `account/rateLimits/read`. | Only normalized primary/secondary windows are archived. Other app-server messages are ignored. |
 
@@ -69,26 +71,36 @@ privacy fixture and verifies byte-for-byte forwarding, the minimal persisted
 schema and mode `0600`. Because this repository is under a File Provider-managed
 Documents directory, signature validation runs on a metadata-free staging copy.
 
-## Previous runtime evidence (safe.1 baseline)
+## Runtime evidence (safe.7)
 
-Final run: macOS 26.5.1, 310.124 seconds, 63 resource samples at five-second
-intervals, process/socket probes at one-second intervals. The monitored PID was
-validated against the exact executable path before sampling.
+Final run: macOS 26.5.1, 310.095 seconds, 63 resource samples at five-second
+intervals, process/socket probes at one-second intervals with no probe failures.
+PID 96886 was validated before and throughout the run as the exact installed
+executable `/Applications/Codenotch Safe.app/Contents/MacOS/Codenotch`.
 
 | Metric | Result | Gate |
 | --- | ---: | ---: |
-| Main-process CPU, average | 0.660% | < 1% idle target |
-| Main-process CPU, median | 0.300% | < 1% idle target |
-| Main-process CPU, brief maximum | 4.300% | Informational; occurred around refresh |
-| Main-process RSS, average | 66.991 MB | < 100 MB target |
-| Main-process RSS, maximum | 69.266 MB | < 100 MB target |
+| Main-process CPU, median | 0.400% | < 1% idle target |
+| Main-process CPU, settled average (final 135 seconds) | 0.479% | < 1% idle target |
+| Main-process CPU, full-run average | 1.851% | Informational; includes refresh-related spikes |
+| Main-process CPU, brief maximum | 18.000% | Informational; refresh burst |
+| Main-process RSS, average | 55.826 MB | < 100 MB target |
+| Main-process RSS, maximum | 81.688 MB | < 100 MB target |
 
-The final process tree contained Codenotch, Claude Code 2.1.252, and `codex`.
-Claude's observed TCP connection terminated at `160.79.104.10:443`, an address
-in Anthropic's AS399358. Codenotch's own observed socket was translated through
-the machine's `198.18.0.0/15` TUN path; the executable and request-construction
-tests restrict that request to the exact Cursor URL above. No MCP, Node, SSH, or
-other child network process appeared in the final run.
+The process tree contained only Codenotch, Claude Code 2.1.266, and the installed
+ChatGPT `codex` binary. Claude Code and Codenotch were both observed connecting
+to `160.79.104.10:443` during the Claude refresh; the source and executable gates
+restrict Codenotch's direct request to the exact Anthropic usage URL above.
+Codenotch and Codex also used the machine's `198.18.0.0/15` TUN path. No MCP,
+Node, SSH, browser, updater, or other child process appeared in the run.
+
+The refresh at 49-52 seconds produced fresh persisted readings without retaining
+credentials or response bodies: Claude recorded session 17% and weekly 23% at
+2026-09-09 15:49:46 UTC with future reset times; Codex recorded primary 27% at
+15:49:48 UTC with a future reset time. These values changed from the pre-run
+readings (Claude session 16%, Codex primary 26%), proving that the installed app
+completed new reads during the monitored cycle rather than merely replaying its
+archive.
 
 The one-second socket probe can miss a connection that starts and ends between
 samples. The runtime evidence is therefore paired with exact request builders,
@@ -113,9 +125,14 @@ is evidence of the tested run, not a system-wide firewall.
    value with expired windows. The bridge now rejects an expired five-hour reset,
    and the provider accepts the record as live for at most five minutes.
 6. Current Claude Code releases did not expose the user's live `/usage` screen
-   through print mode on this machine. The safe.4 fallback confines direct OAuth
+   through print mode on this machine. The safe.7 fallback confines direct OAuth
    access to one source file, two exact credential service names, read-only
    Keychain calls, an ephemeral session, and one exact Anthropic endpoint.
+7. Service-only Keychain discovery could select a credential belonging to a
+   different Claude Code account record. The final query matches Claude Code's
+   own service-plus-current-user rule. Fixed, non-secret diagnostics distinguish
+   a missing item, Keychain denial, malformed field, empty token, unsafe token,
+   invalid expiry, and expired credential without logging credential values.
 
 ## Residual trust and limitations
 
@@ -143,9 +160,11 @@ is evidence of the tested run, not a system-wide firewall.
   compatible macOS 15.4 SDK and deployment target 15.0, then ran the app on
   macOS 26.5.1. The checked-in XcodeGen project targets macOS 26.
 - The full XCTest target cannot run locally because full Xcode/XCTest and
-  XcodeGen are not installed. GitHub Actions validation for the safe.4 commit is
-  pending. Local source type-check, optimized build, signing, static verifier,
-  bridge fixture and the request/parser harness passed.
+  XcodeGen are not installed. Pinned `macos-26` Safe CI run #12 ran the full
+  XCTest target, rebuilt the safe.7 bundle, passed `safe-verify`, and uploaded
+  the packaged app. Local source type-check, optimized build, signing, static
+  verifier, bridge fixture, request/parser harness, installed-bundle validation,
+  normalized live-read check, and final runtime gate passed.
 - This is a focused engineering audit, not an independent third-party security
   assessment or a formal proof of non-exfiltration.
 
