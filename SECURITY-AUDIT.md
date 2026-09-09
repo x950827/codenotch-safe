@@ -3,6 +3,7 @@
 Audit date: 2026-09-08  
 Upstream base: `vinzdg/codenotch` at `6482ce0`  
 Audited implementation commit: `cf3156c37d1f8d5c2ecd03ebe6dbdcec3fa79e73`  
+Xcode 26 CI validation commit: `358430893c9693baf0be6f32f7afc645f2930389`
 Audited executable SHA-256: `e4d0baabd6c406311faebd126b99efd3ea69bbc1d60eccc66d10da8485e35fd3`  
 Bundle identifier: `local.audited.codenotch`  
 Bundle version: `1.6.0-safe.1`
@@ -125,10 +126,11 @@ is evidence of the tested run, not a system-wide firewall.
   compatible macOS 15.4 SDK and deployment target 15.0, then ran the app on
   macOS 26.5.1. The checked-in XcodeGen project targets macOS 26.
 - The full XCTest target could not run locally because full Xcode/XCTest and
-  XcodeGen are not installed. Source type-check, optimized build, signing,
-  static verifier, isolated provider probes, and the final runtime gate passed.
-  The pinned macOS 26 CI workflow is intended to run the XCTest target after
-  the branch is pushed.
+  XcodeGen are not installed. The pinned `macos-26` GitHub Actions workflow ran
+  the full XCTest target, rebuilt the audited bundle, passed `safe-verify`, and
+  uploaded the packaged app. Local source type-check, optimized build, signing,
+  static verifier, isolated provider probes, and the final runtime gate also
+  passed.
 - This is a focused engineering audit, not an independent third-party security
   assessment or a formal proof of non-exfiltration.
 
