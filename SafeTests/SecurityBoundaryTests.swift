@@ -4,6 +4,7 @@ import XCTest
 @testable import Codenotch
 
 final class SecurityBoundaryTests: XCTestCase {
+    @MainActor
     func testFiveMinuteTimerDoesNotSkipForSubsecondClockSkew() {
         XCTAssertFalse(UsageStore.shouldRefresh(
             isBusy: false,
@@ -62,10 +63,10 @@ final class SecurityBoundaryTests: XCTestCase {
     }
 
     func testCodexParserRefusesMissingAndErrorResponses() {
-        XCTAssertThrowsError(CodexAppServerProtocol.parse(
+        XCTAssertThrowsError(try CodexAppServerProtocol.parse(
             #"{"id":0,"result":{}}"#
         ))
-        XCTAssertThrowsError(CodexAppServerProtocol.parse(
+        XCTAssertThrowsError(try CodexAppServerProtocol.parse(
             #"{"id":1,"error":{"code":-32001,"message":"authentication required"}}"#
         ))
     }
