@@ -285,6 +285,30 @@ final class SecurityBoundaryTests: XCTestCase {
                 "type mismatch at claudeAiOauth.expiresAt"
             )
         }
+
+        for (json, issue) in [
+            (
+                #"{"claudeAiOauth":{"accessToken":"","expiresAt":4102444800000}}"#,
+                "empty access token"
+            ),
+            (
+                #"{"claudeAiOauth":{"accessToken":"fixture\ntoken","expiresAt":4102444800000}}"#,
+                "unsafe access token"
+            ),
+            (
+                #"{"claudeAiOauth":{"accessToken":"fixture-token","expiresAt":0}}"#,
+                "invalid expiry"
+            ),
+        ] {
+            XCTAssertThrowsError(
+                try SafeClaudeOAuthUsage.parseCredential(Data(json.utf8))
+            ) { error in
+                XCTAssertEqual(
+                    SafeClaudeOAuthUsage.credentialDecodeIssue(error),
+                    issue
+                )
+            }
+        }
     }
 
     func testClaudeOAuthCredentialAccountMatchesClaudeCodeRules() {

@@ -4,6 +4,9 @@ import Security
 
 enum SafeClaudeOAuthBoundaryError: Error {
     case invalidCredential
+    case emptyAccessToken
+    case unsafeAccessToken
+    case invalidExpiry
     case invalidEndpoint
     case missingUsageWindows
 }
@@ -201,13 +204,14 @@ actor SafeClaudeOAuthUsage {
         let payload = try JSONDecoder().decode(Payload.self, from: data)
         let token = payload.claudeAiOauth.accessToken
         let milliseconds = payload.claudeAiOauth.expiresAt
-        guard !token.isEmpty,
-              !token.contains("\r"),
-              !token.contains("\n"),
-              milliseconds.isFinite,
-              milliseconds > 0
-        else {
-            throw SafeClaudeOAuthBoundaryError.invalidCredential
+        guard !token.isEmpty else {
+            throw SafeClaudeOAuthBoundaryError.emptyAccessToken
+        }
+        guard !token.contains("\r"), !token.contains("\n") else {
+            throw SafeClaudeOAuthBoundaryError.unsafeAccessToken
+        }
+        guard milliseconds.isFinite, milliseconds > 0 else {
+            throw SafeClaudeOAuthBoundaryError.invalidExpiry
         }
         return Credential(
             accessToken: token,
@@ -222,6 +226,12 @@ actor SafeClaudeOAuthUsage {
         }
 
         switch error {
+        case SafeClaudeOAuthBoundaryError.emptyAccessToken:
+            return "empty access token"
+        case SafeClaudeOAuthBoundaryError.unsafeAccessToken:
+            return "unsafe access token"
+        case SafeClaudeOAuthBoundaryError.invalidExpiry:
+            return "invalid expiry"
         case let DecodingError.keyNotFound(key, context):
             return "missing field at \(path(context.codingPath + [key]))"
         case let DecodingError.typeMismatch(_, context):
