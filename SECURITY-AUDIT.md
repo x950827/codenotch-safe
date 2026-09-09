@@ -1,31 +1,30 @@
 # Codenotch Safe: local security audit
 
-Audit date: 2026-09-08  
+Audit date: 2026-09-09  
 Upstream base: `vinzdg/codenotch` at `6482ce0`  
-Audited implementation commit: `cf3156c37d1f8d5c2ecd03ebe6dbdcec3fa79e73`  
-Xcode 26 CI validation commit: `358430893c9693baf0be6f32f7afc645f2930389`
-Audited executable SHA-256: `e4d0baabd6c406311faebd126b99efd3ea69bbc1d60eccc66d10da8485e35fd3`  
+Audited implementation commit: `839d907651926170b6ede7aa1c63f3572772239e`  
+Xcode 26 CI validation: pending for the safe.4 candidate  
+Audited executable SHA-256: `90a15beb22420e8556029e6ec6167cf8e50324c9be39f1683041e7f3fef562d2`  
 Bundle identifier: `local.audited.codenotch`  
-Bundle version: `1.6.0-safe.1`
+Bundle version: `1.6.0-safe.4`
 
 ## Verdict
 
-The hardened build passed its source, binary, signing, destination, and runtime
-gates. During the final 310-second run, no analytics SDK, updater, WebView,
-automatic Claude profile, MCP server, Node helper, SSH process, or unrelated
-provider endpoint was present in the compiled app or observed in its process
-tree.
+The safe.4 candidate passed its local source, binary, signing, destination, and
+executable boundary gates. Its exact request/parser harness also passed. It has
+not yet been installed because the new Claude fallback reads a Claude Code
+credential from Keychain; installation and final runtime validation require the
+user's explicit approval.
 
-This verdict applies to the audited source allowlist and the local versions of
-Claude Code and Codex used for the test. The app deliberately delegates Claude
-and Codex authentication to those installed CLIs, so their future versions are
-a trust boundary and should be rechecked after an update.
+The earlier 310-second runtime evidence below applies to safe.1. It remains
+useful as a baseline for the unchanged provider polling and UI, but it is not
+runtime evidence for safe.4 and must be replaced after the approved install.
 
 ## Allowed data flows
 
 | Provider | Local access | External action | Persistence in Codenotch |
 | --- | --- | --- | --- |
-| Claude | Reads the default Claude Code profile's local account label and session-status files. Codenotch does not read a Claude token or keychain item. | Runs only `claude --print --safe-mode --strict-mcp-config --tools "" --no-chrome --no-session-persistence /usage`. The environment drops inherited credentials, alternate API origins, proxies, and hooks; it also disables nonessential traffic, claude.ai connectors, artifacts, and marketplace auto-install. Claude Code itself reads its login and contacts Anthropic. | Normalized percentages and reset times only. No CLI output, token, or response body is stored or logged. |
+| Claude | Reads the default Claude Code profile's local account label and session-status files. A bundled status-line bridge retains only normalized rate-limit fields. If both local live sources fail, one audited Swift file selects the newest item from the exact default Claude Code credential services and decodes only `accessToken` and `expiresAt`. | Prefers the bridge record, then runs the restricted `claude --print ... /usage` command. The final fallback sends one `GET` to exactly `https://api.anthropic.com/api/oauth/usage`; redirects, cookies, URL credentials, caches and connection proxy overrides are disabled. | The OAuth token is held only in memory until expiry. Only normalized percentages and reset times are archived; raw status-line input, CLI output, Keychain data and response bodies are never stored or logged. |
 | Cursor | Opens Cursor's editor SQLite store read-only and reads the two values needed to form Cursor's session cookie. Activity comes from `composerHeaders` in the same store. | One `GET` to exactly `https://cursor.com/api/usage-summary`; redirects are rejected. | The session is ephemeral: no cookie jar, credential store, URL cache, response body log, or token persistence. Normalized usage is archived. |
 | Codex | Reads local activity metadata. Codenotch does not read `auth.json` or a bearer token. | Starts the installed `codex app-server` and sends a fixed three-message JSONL exchange: `initialize`, `initialized`, and `account/rateLimits/read`. | Only normalized primary/secondary windows are archived. Other app-server messages are ignored. |
 
@@ -44,12 +43,15 @@ and background plugin command sources. It separately documents
 - The app registers only the default Claude profile, Cursor, and Codex. Other
   provider implementations remain in the repository for upstream traceability,
   but are absent from the target and local safe build.
-- Static binary URL extraction found only:
+- Static binary URL extraction includes only these app-owned requests:
   - `https://cursor.com/api/usage-summary` (the app-owned request)
+  - `https://api.anthropic.com/api/oauth/usage` (the audited Claude fallback)
   - `https://cursor.com/dashboard` (user-opened account link)
   - `https://claude.ai/settings/usage` (user-opened account link)
-- Undefined-symbol inspection found `NSURLSession` and `sqlite3_open_v2`, with
-  no `SecItemCopyMatching`, `WKWebView`, or Sparkle updater symbols.
+- Undefined-symbol inspection finds `SecItemCopyMatching` only in the main app.
+  The status-line helper has no Keychain or network boundary, and neither binary
+  contains `SecItemAdd`, `SecItemUpdate`, `SecItemDelete`, `WKWebView`, or a
+  Sparkle updater symbol.
 - Linked libraries are Apple system frameworks and `libsqlite3`; no third-party
   analytics, crash-reporting, WebView, or updater framework is linked.
 - The ad-hoc signature has no entitlements. The bundle has no app sandbox and
@@ -59,14 +61,15 @@ and background plugin command sources. It separately documents
   `actions/upload-artifact` v7.0.1).
 
 The verifier rejects a provider-ring `repeatForever` animation, automatic
-`ClaudeProfile.discover`, forbidden imports/symbols/destination strings,
-unexpected entitlements, an unexpected bundle identifier, and unrecognized
-extended attributes. Because this repository is under a File Provider-managed
-Documents directory, signature validation runs on a metadata-free staging copy
-after the original bundle's xattrs have been restricted to FinderInfo, File
-Provider metadata, and provenance.
+`ClaudeProfile.discover`, unrelated imports/symbols/destination strings,
+Keychain mutation symbols, an Anthropic endpoint other than the single literal
+above, unexpected entitlements, an unexpected bundle identifier, and
+unrecognized extended attributes. It also executes the bridge against a
+privacy fixture and verifies byte-for-byte forwarding, the minimal persisted
+schema and mode `0600`. Because this repository is under a File Provider-managed
+Documents directory, signature validation runs on a metadata-free staging copy.
 
-## Runtime evidence
+## Previous runtime evidence (safe.1 baseline)
 
 Final run: macOS 26.5.1, 310.124 seconds, 63 resource samples at five-second
 intervals, process/socket probes at one-second intervals. The monitored PID was
@@ -106,6 +109,13 @@ is evidence of the tested run, not a system-wide firewall.
 4. File Provider could reattach FinderInfo between signing and verification.
    The verifier now rejects unknown xattrs and validates the unchanged signed
    contents in a temporary non-File-Provider staging directory.
+5. Concurrent, long-lived Claude sessions kept overwriting a shared status-line
+   value with expired windows. The bridge now rejects an expired five-hour reset,
+   and the provider accepts the record as live for at most five minutes.
+6. Current Claude Code releases did not expose the user's live `/usage` screen
+   through print mode on this machine. The safe.4 fallback confines direct OAuth
+   access to one source file, two exact credential service names, read-only
+   Keychain calls, an ephemeral session, and one exact Anthropic endpoint.
 
 ## Residual trust and limitations
 
@@ -115,6 +125,13 @@ is evidence of the tested run, not a system-wide firewall.
 - The Cursor session cookie is sensitive. The app holds it briefly in memory
   and sends it to Cursor's exact usage endpoint; it cannot offer hardware-backed
   isolation for that value.
+- The Claude OAuth access token is also sensitive. The app reads the newest
+  matching Claude Code Keychain item, holds only the decoded access token and
+  expiry in memory, and sends the token only to the exact Anthropic usage URL.
+  macOS may ask the user to grant access to that item.
+- Anthropic's OAuth usage endpoint is used by Claude Code but is not a published
+  public API contract, so a server-side schema or policy change can disable the
+  fallback until this audit is updated.
 - Claude Code and Codex are external executables. Their code, authentication,
   and vendor-side behavior are outside this repository. The Claude invocation
   suppresses documented nonessential traffic, and the final run showed only an
@@ -125,12 +142,10 @@ is evidence of the tested run, not a system-wide firewall.
 - Local verification used the available Command Line Tools compiler with the
   compatible macOS 15.4 SDK and deployment target 15.0, then ran the app on
   macOS 26.5.1. The checked-in XcodeGen project targets macOS 26.
-- The full XCTest target could not run locally because full Xcode/XCTest and
-  XcodeGen are not installed. The pinned `macos-26` GitHub Actions workflow ran
-  the full XCTest target, rebuilt the audited bundle, passed `safe-verify`, and
-  uploaded the packaged app. Local source type-check, optimized build, signing,
-  static verifier, isolated provider probes, and the final runtime gate also
-  passed.
+- The full XCTest target cannot run locally because full Xcode/XCTest and
+  XcodeGen are not installed. GitHub Actions validation for the safe.4 commit is
+  pending. Local source type-check, optimized build, signing, static verifier,
+  bridge fixture and the request/parser harness passed.
 - This is a focused engineering audit, not an independent third-party security
   assessment or a formal proof of non-exfiltration.
 
