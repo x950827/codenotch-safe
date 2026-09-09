@@ -29,6 +29,10 @@ actor SafeClaudeOAuthUsage {
         string: "https://api.anthropic.com/api/oauth/usage"
     )!
     private static let bareCredentialService = "Claude Code-credentials"
+    private static let fallbackCredentialAccount = "claude-code-user"
+    private static let credentialAccountCharacters = CharacterSet(
+        charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
+    )
 
     private let redirectDelegate: RedirectRejectingSessionDelegate?
     private let session: URLSession
@@ -211,6 +215,41 @@ actor SafeClaudeOAuthUsage {
         )
     }
 
+    static func credentialDecodeIssue(_ error: Error) -> String {
+        func path(_ components: [CodingKey]) -> String {
+            let value = components.map(\.stringValue).joined(separator: ".")
+            return value.isEmpty ? "root" : value
+        }
+
+        switch error {
+        case let DecodingError.keyNotFound(key, context):
+            return "missing field at \(path(context.codingPath + [key]))"
+        case let DecodingError.typeMismatch(_, context):
+            return "type mismatch at \(path(context.codingPath))"
+        case let DecodingError.valueNotFound(_, context):
+            return "null value at \(path(context.codingPath))"
+        case let DecodingError.dataCorrupted(context):
+            return "invalid JSON at \(path(context.codingPath))"
+        default:
+            return "invalid credential"
+        }
+    }
+
+    static func credentialAccount(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fallbackUsername: String = NSUserName()
+    ) -> String {
+        let account = environment["USER"] ?? fallbackUsername
+        guard !account.isEmpty,
+              account.unicodeScalars.allSatisfy({
+                  credentialAccountCharacters.contains($0)
+              })
+        else {
+            return fallbackCredentialAccount
+        }
+        return account
+    }
+
     static func credentialServices(configDirectory: URL) -> [String] {
         let path = (configDirectory.path as NSString).standardizingPath
         let digest = SHA256.hash(data: Data(path.utf8))
@@ -228,8 +267,11 @@ actor SafeClaudeOAuthUsage {
     }
 
     private static func readCredential(services: [String]) throws -> Credential {
-        let matches = services.flatMap(matches(service:))
-        guard let newest = matches.max(by: {
+        let account = credentialAccount()
+        let keychainMatches = services.flatMap {
+            matches(service: $0, account: account)
+        }
+        guard let newest = keychainMatches.max(by: {
             ($0.modifiedAt ?? .distantPast) < ($1.modifiedAt ?? .distantPast)
         }) else {
             Log.usage.notice("claude OAuth stopped before network: no exact credential item")
@@ -257,16 +299,23 @@ actor SafeClaudeOAuthUsage {
         do {
             return try parseCredential(data)
         } catch {
-            Log.usage.notice("claude OAuth stopped before network: credential shape rejected")
+            let issue = credentialDecodeIssue(error)
+            Log.usage.notice(
+                "claude OAuth stopped before network: credential shape rejected (\(issue, privacy: .public))"
+            )
             throw error
         }
     }
 
-    private static func matches(service: String) -> [KeychainMatch] {
+    private static func matches(
+        service: String,
+        account: String
+    ) -> [KeychainMatch] {
         var result: CFTypeRef?
         let status = SecItemCopyMatching([
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
+            kSecAttrAccount: account,
             kSecReturnAttributes: true,
             kSecReturnPersistentRef: true,
             kSecMatchLimit: kSecMatchLimitAll

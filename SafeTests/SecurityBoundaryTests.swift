@@ -274,6 +274,43 @@ final class SecurityBoundaryTests: XCTestCase {
                        Date(timeIntervalSince1970: 4_102_444_800))
     }
 
+    func testClaudeOAuthCredentialDecoderReportsOnlyFieldAndFailureKind() {
+        let json = #"{"claudeAiOauth":{"accessToken":"fixture-token","expiresAt":"later"}}"#
+
+        XCTAssertThrowsError(
+            try SafeClaudeOAuthUsage.parseCredential(Data(json.utf8))
+        ) { error in
+            XCTAssertEqual(
+                SafeClaudeOAuthUsage.credentialDecodeIssue(error),
+                "type mismatch at claudeAiOauth.expiresAt"
+            )
+        }
+    }
+
+    func testClaudeOAuthCredentialAccountMatchesClaudeCodeRules() {
+        XCTAssertEqual(
+            SafeClaudeOAuthUsage.credentialAccount(
+                environment: ["USER": "vinz"],
+                fallbackUsername: "fallback"
+            ),
+            "vinz"
+        )
+        XCTAssertEqual(
+            SafeClaudeOAuthUsage.credentialAccount(
+                environment: [:],
+                fallbackUsername: "fallback.name"
+            ),
+            "fallback.name"
+        )
+        XCTAssertEqual(
+            SafeClaudeOAuthUsage.credentialAccount(
+                environment: ["USER": "not valid"],
+                fallbackUsername: "also invalid"
+            ),
+            "claude-code-user"
+        )
+    }
+
     func testClaudeOAuthUsesOnlyTheDefaultClaudeCodeCredentialServices() {
         let directory = URL(fileURLWithPath: "/Users/vinz/.claude/")
 
