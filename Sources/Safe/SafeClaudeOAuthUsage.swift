@@ -111,8 +111,10 @@ actor SafeClaudeOAuthUsage {
         }
         let credential = try loadCredential()
         guard credential.expiresAt > Date() else {
+            Log.usage.notice("claude OAuth stopped before network: exact credential is expired")
             throw UsageProviderError.credentialExpired
         }
+        Log.usage.debug("claude OAuth accepted an unexpired exact credential")
         cachedCredential = credential
         return credential
     }
@@ -230,6 +232,7 @@ actor SafeClaudeOAuthUsage {
         guard let newest = matches.max(by: {
             ($0.modifiedAt ?? .distantPast) < ($1.modifiedAt ?? .distantPast)
         }) else {
+            Log.usage.notice("claude OAuth stopped before network: no exact credential item")
             throw UsageProviderError.needsAuth
         }
 
@@ -241,6 +244,9 @@ actor SafeClaudeOAuthUsage {
             kSecMatchLimit: kSecMatchLimitOne
         ] as CFDictionary, &item)
         guard status == errSecSuccess, let data = item as? Data else {
+            Log.usage.notice(
+                "claude OAuth stopped before network: Keychain read status \(status, privacy: .public)"
+            )
             if status == errSecInteractionNotAllowed
                 || status == errSecUserCanceled
                 || status == errSecAuthFailed {
@@ -248,7 +254,12 @@ actor SafeClaudeOAuthUsage {
             }
             throw UsageProviderError.needsAuth
         }
-        return try parseCredential(data)
+        do {
+            return try parseCredential(data)
+        } catch {
+            Log.usage.notice("claude OAuth stopped before network: credential shape rejected")
+            throw error
+        }
     }
 
     private static func matches(service: String) -> [KeychainMatch] {
