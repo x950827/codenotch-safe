@@ -67,7 +67,7 @@ struct ClaudeUsageCLI: Sendable {
     ]
 
     /// Nil means Claude Code is not installed in any of the places it installs
-    /// itself, and the caller should use the token path instead.
+    /// itself, and the safe caller may use Claude Code's dated local cache.
     static func locate(home: URL = ClaudeProfile.homeDirectory,
                        root: URL = URL(fileURLWithPath: "/"),
                        fileManager: FileManager = .default) -> ClaudeUsageCLI? {
@@ -135,9 +135,8 @@ struct ClaudeUsageCLI: Sendable {
         guard process.terminationStatus == 0 else {
             Log.usage.debug("claude /usage exited \(process.terminationStatus)")
             // A non-zero exit is Claude Code declining to answer, which in
-            // practice means it has no login of its own. Not an error worth
-            // showing — the caller falls back to the token path, which can say
-            // something more precise about why.
+            // practice means it has no login of its own. The safe caller may
+            // still have a dated vendor cache to show without touching a token.
             throw UsageProviderError.needsAuth
         }
         guard let text = String(data: data, encoding: .utf8), !text.isEmpty else {

@@ -12,8 +12,9 @@ enum SafeClaudeProfiles {
     }
 }
 
-/// Reads Claude limits only by asking Claude Code itself. This type has no
-/// credential loader and cannot fall back to a keychain or bearer-token path.
+/// Reads Claude limits from Claude Code's own output or its dated local usage
+/// cache. This type has no credential loader and cannot fall back to a keychain
+/// or bearer-token path.
 actor ClaudeCLIOnlyProvider: UsageProvider {
     nonisolated let profile: ClaudeProfile
     nonisolated let id: String
@@ -21,37 +22,69 @@ actor ClaudeCLIOnlyProvider: UsageProvider {
     nonisolated let glyph = ProviderGlyph.claude
 
     private let cli: ClaudeUsageCLI?
+    private let cache: SafeClaudeUsageCache?
 
     init(profile: ClaudeProfile = .default()) {
-        self.init(profile: profile, cli: ClaudeUsageCLI.locate())
+        self.init(
+            profile: profile,
+            cli: ClaudeUsageCLI.locate(),
+            cache: SafeClaudeUsageCache(profile: profile)
+        )
     }
 
     init(profile: ClaudeProfile, cli: ClaudeUsageCLI?) {
+        self.init(
+            profile: profile,
+            cli: cli,
+            cache: SafeClaudeUsageCache(profile: profile)
+        )
+    }
+
+    init(profile: ClaudeProfile, cli: ClaudeUsageCLI?, cache: SafeClaudeUsageCache?) {
         self.profile = profile
         self.id = profile.id
         self.displayName = profile.displayName
         self.cli = cli
+        self.cache = cache
     }
 
     func fetchSnapshot() async throws -> ProviderSnapshot {
-        guard let cli else { throw UsageProviderError.needsAuth }
-
-        let windows: [LimitWindow]
-        do {
-            windows = try await cli.read(profile: profile)
-        } catch {
-            // There is deliberately no second source. A failed `/usage` read
-            // means Claude Code itself needs attention.
-            throw UsageProviderError.needsAuth
+        if let cli {
+            do {
+                let windows = try await cli.read(profile: profile)
+                Log.usage.debug("claude: read \(windows.count) normalized windows from CLI")
+                return snapshot(windows: windows, status: .ok)
+            } catch {
+                // Recent Claude Code releases accept `/usage` in print mode but
+                // emit only per-command cost statistics. The settings cache is
+                // the bounded fallback; no credential source is attempted.
+                Log.usage.debug("claude: CLI did not return usage windows; checking local cache")
+            }
         }
 
-        Log.usage.debug("claude: read \(windows.count) normalized windows from CLI")
+        if let cache, let reading = try? cache.read() {
+            Log.usage.debug(
+                "claude: read \(reading.windows.count) normalized windows from dated local cache"
+            )
+            return snapshot(
+                windows: reading.windows,
+                status: .stale(since: reading.fetchedAt)
+            )
+        }
+
+        throw UsageProviderError.needsAuth
+    }
+
+    private func snapshot(
+        windows: [LimitWindow],
+        status: ProviderStatus
+    ) -> ProviderSnapshot {
         return ProviderSnapshot(
             id: id,
             displayName: displayName,
             glyph: glyph,
             fidelity: .official,
-            status: .ok,
+            status: status,
             windows: windows,
             headlineID: "session"
         )

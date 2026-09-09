@@ -66,11 +66,14 @@ struct CodexAppServerExecutable: Sendable {
         root: URL = URL(fileURLWithPath: "/"),
         fileManager: FileManager = .default
     ) -> CodexAppServerExecutable? {
+        // Prefer the signed app's bundled executable. A user PATH entry may be
+        // a shell wrapper with routing preconditions that do not apply to the
+        // ChatGPT app and that Finder-launched Codenotch cannot satisfy.
         let relativePaths = [
-            home.appendingPathComponent(".local/bin/codex"),
+            root.appendingPathComponent("Applications/ChatGPT.app/Contents/Resources/codex"),
             root.appendingPathComponent("opt/homebrew/bin/codex"),
             root.appendingPathComponent("usr/local/bin/codex"),
-            root.appendingPathComponent("Applications/ChatGPT.app/Contents/Resources/codex"),
+            home.appendingPathComponent(".local/bin/codex"),
         ]
         guard let binary = relativePaths.first(where: {
             fileManager.isExecutableFile(atPath: $0.path)
