@@ -72,6 +72,17 @@ if [[ "$mode" != "build" ]]; then
     exit 2
 fi
 
+requested_signing_identity=${CODENOTCH_SIGNING_IDENTITY:-Codenotch Local Signing}
+if [[ "$requested_signing_identity" == "-" ]]; then
+    signing_identity=$("$script_dir/resolve-safe-signing-identity.sh" "-" </dev/null)
+    signing_mode=adhoc
+else
+    valid_identities=$(/usr/bin/security find-identity -v -p codesigning)
+    signing_identity=$(print -r -- "$valid_identities" \
+        | "$script_dir/resolve-safe-signing-identity.sh" "$requested_signing_identity")
+    signing_mode=certificate
+fi
+
 /bin/rm -rf "$bundle"
 /bin/mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
 
@@ -96,8 +107,8 @@ fi
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
     <key>CFBundleName</key><string>Codenotch Safe</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.6.0-safe.7</string>
-    <key>CFBundleVersion</key><string>7</string>
+    <key>CFBundleShortVersionString</key><string>1.6.0-safe.8</string>
+    <key>CFBundleVersion</key><string>8</string>
     <key>LSMinimumSystemVersion</key><string>$deployment_target</string>
 </dict>
 </plist>
@@ -112,7 +123,12 @@ trap '/bin/rm -rf "$signing_staging"' EXIT
 staged_bundle="$signing_staging/Codenotch.app"
 /usr/bin/ditto --norsrc "$bundle" "$staged_bundle"
 /usr/bin/xattr -cr "$staged_bundle"
-/usr/bin/codesign --force --deep --sign - "$staged_bundle"
+/usr/bin/codesign --force --deep --sign "$signing_identity" "$staged_bundle"
 /bin/rm -rf "$bundle"
 /usr/bin/ditto --norsrc "$staged_bundle" "$bundle"
-print "built $bundle"
+
+evidence="$build_root/verification"
+/bin/mkdir -p "$evidence"
+print -r -- "$signing_mode" > "$evidence/signing-mode.txt"
+print -r -- "$signing_identity" > "$evidence/signing-identity.txt"
+print "built $bundle ($signing_mode signing)"

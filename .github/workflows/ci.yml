@@ -29,6 +29,8 @@ jobs:
         run: make test-ci
 
       - name: Build and verify audited app
+        env:
+          CODENOTCH_SIGNING_IDENTITY: "-"
         run: make safe-verify
 
       - name: Package app
