@@ -43,6 +43,49 @@ verified_status_line_helper="$verified_bundle/Contents/MacOS/CodenotchClaudeStat
 /usr/bin/ditto --norsrc "$bundle" "$verified_bundle"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$verified_bundle"
 
+signing_mode_file="$evidence/signing-mode.txt"
+signing_identity_file="$evidence/signing-identity.txt"
+[[ -f "$signing_mode_file" && -f "$signing_identity_file" ]] || {
+    print -u2 "safe signing selection evidence is missing"
+    exit 1
+}
+
+signing_mode=$(<"$signing_mode_file")
+signing_identity=$(<"$signing_identity_file")
+signature_details=$(/usr/bin/codesign -dvvv "$verified_bundle" 2>&1)
+designated_requirement=$(/usr/bin/codesign -d -r- "$verified_bundle" 2>&1)
+print -r -- "$signature_details" > "$evidence/signature-details.txt"
+print -r -- "$designated_requirement" > "$evidence/designated-requirement.txt"
+
+case "$signing_mode" in
+    adhoc)
+        [[ "$signing_identity" == "-" && "$signature_details" == *"Signature=adhoc"* ]] || {
+            print -u2 "bundle does not match the recorded ad-hoc signing mode"
+            exit 1
+        }
+        ;;
+    certificate)
+        [[ ${#signing_identity} -eq 40 && "$signing_identity" != *[^[:xdigit:]]* ]] || {
+            print -u2 "recorded certificate fingerprint is invalid"
+            exit 1
+        }
+        [[ "$signature_details" != *"Signature=adhoc"* ]] || {
+            print -u2 "certificate signing was requested but the bundle is ad-hoc signed"
+            exit 1
+        }
+        leaf_requirement="certificate leaf = H\"${signing_identity:u}\""
+        /usr/bin/codesign --verify --strict "-R=$leaf_requirement" "$verified_bundle"
+        [[ "$designated_requirement" != *"cdhash"* ]] || {
+            print -u2 "certificate-signed bundle has a hash-only designated requirement"
+            exit 1
+        }
+        ;;
+    *)
+        print -u2 "unknown safe signing mode: $signing_mode"
+        exit 1
+        ;;
+esac
+
 entitlements=$(/usr/bin/codesign -d --entitlements :- "$verified_bundle" 2>/dev/null || true)
 print -r -- "$entitlements" > "$evidence/entitlements.plist"
 if [[ -n "$entitlements" ]] && [[ "$entitlements" != *"<dict/>"* ]] \
@@ -161,6 +204,12 @@ fi
 bundle_id=$(/usr/bin/plutil -extract CFBundleIdentifier raw "$verified_bundle/Contents/Info.plist")
 [[ "$bundle_id" == "local.audited.codenotch" ]] || {
     print -u2 "unexpected bundle id: $bundle_id"
+    exit 1
+}
+short_version=$(/usr/bin/plutil -extract CFBundleShortVersionString raw "$verified_bundle/Contents/Info.plist")
+bundle_version=$(/usr/bin/plutil -extract CFBundleVersion raw "$verified_bundle/Contents/Info.plist")
+[[ "$short_version" == "1.6.0-safe.8" && "$bundle_version" == "8" ]] || {
+    print -u2 "unexpected safe bundle version: $short_version ($bundle_version)"
     exit 1
 }
 

@@ -304,7 +304,7 @@ case "$signing_mode" in
             exit 1
         }
         leaf_requirement="certificate leaf = H\"${signing_identity:u}\""
-        /usr/bin/codesign --verify --strict -R "$leaf_requirement" "$verified_bundle"
+        /usr/bin/codesign --verify --strict "-R=$leaf_requirement" "$verified_bundle"
         [[ "$designated_requirement" != *"cdhash"* ]] || {
             print -u2 "certificate-signed bundle has a hash-only designated requirement"
             exit 1
