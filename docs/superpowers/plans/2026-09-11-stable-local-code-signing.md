@@ -26,7 +26,7 @@
 - Create: `Scripts/test-safe-signing-selection.sh`
 - Create: `Scripts/resolve-safe-signing-identity.sh`
 
-- [ ] **Step 1: Write the failing fixture test**
+- [x] **Step 1: Write the failing fixture test**
 
 Create `Scripts/test-safe-signing-selection.sh` with executable mode and this structure:
 
@@ -80,7 +80,7 @@ expect_failure "Codenotch Local Signing" "" "no valid code-signing identity matc
 print "safe signing identity selection tests passed"
 ```
 
-- [ ] **Step 2: Run the test and verify it fails because the resolver is absent**
+- [x] **Step 2: Run the test and verify it fails because the resolver is absent**
 
 Run:
 
@@ -90,7 +90,7 @@ rtk Scripts/test-safe-signing-selection.sh
 
 Expected: nonzero exit with `resolve-safe-signing-identity.sh: no such file or directory`.
 
-- [ ] **Step 3: Implement the minimal resolver**
+- [x] **Step 3: Implement the minimal resolver**
 
 Create executable `Scripts/resolve-safe-signing-identity.sh`:
 
@@ -136,7 +136,7 @@ case ${#matches[@]} in
 esac
 ```
 
-- [ ] **Step 4: Run the fixture tests and live read-only resolution**
+- [x] **Step 4: Run the fixture tests and live read-only resolution**
 
 Run:
 
@@ -147,7 +147,7 @@ rtk proxy /bin/zsh -c '/usr/bin/security find-identity -v -p codesigning | Scrip
 
 Expected: the fixture suite passes and the live command prints exactly `FBDC365911D5BECFEF46AB583120B3A56F282185`.
 
-- [ ] **Step 5: Commit the resolver and tests**
+- [x] **Step 5: Commit the resolver and tests**
 
 ```sh
 rtk git add Scripts/resolve-safe-signing-identity.sh Scripts/test-safe-signing-selection.sh
@@ -161,7 +161,7 @@ rtk git commit -m "test: define safe signing identity selection"
 - Modify: `Makefile`
 - Modify: `.github/workflows/ci.yml`
 
-- [ ] **Step 1: Run an invalid-identity build to capture the current missing behavior**
+- [x] **Step 1: Run an invalid-identity build to capture the current missing behavior**
 
 Run:
 
@@ -171,7 +171,7 @@ rtk proxy /usr/bin/env CODENOTCH_SIGNING_IDENTITY=DOES-NOT-EXIST Scripts/build-s
 
 Expected before implementation: the build succeeds because the environment variable is ignored. This is the failing behavioral check.
 
-- [ ] **Step 2: Resolve the signing mode before compilation**
+- [x] **Step 2: Resolve the signing mode before compilation**
 
 After the build-mode argument check in `Scripts/build-safe-local.sh`, add:
 
@@ -209,7 +209,7 @@ print -r -- "$signing_identity" > "$evidence/signing-identity.txt"
 print "built $bundle ($signing_mode signing)"
 ```
 
-- [ ] **Step 3: Add the fixture suite to the safe verification graph**
+- [x] **Step 3: Add the fixture suite to the safe verification graph**
 
 Add `safe-signing-test` to `.PHONY`, then add:
 
@@ -221,7 +221,7 @@ safe-build: safe-typecheck safe-signing-test
 	Scripts/build-safe-local.sh
 ```
 
-- [ ] **Step 4: Make ad-hoc signing explicit in GitHub Actions**
+- [x] **Step 4: Make ad-hoc signing explicit in GitHub Actions**
 
 Change the safe bundle step in `.github/workflows/ci.yml` to:
 
@@ -232,7 +232,7 @@ Change the safe bundle step in `.github/workflows/ci.yml` to:
         run: make safe-verify
 ```
 
-- [ ] **Step 5: Verify failure and CI-mode success**
+- [x] **Step 5: Verify failure and CI-mode success**
 
 Run:
 
@@ -243,7 +243,7 @@ rtk proxy /usr/bin/env CODENOTCH_SIGNING_IDENTITY=- make safe-verify
 
 Expected: the first command fails before compilation with `no valid code-signing identity matches`; the second builds safe.8 and passes the existing verifier with explicit ad-hoc signing.
 
-- [ ] **Step 6: Commit the build integration**
+- [x] **Step 6: Commit the build integration**
 
 ```sh
 rtk git add Scripts/build-safe-local.sh Makefile .github/workflows/ci.yml
@@ -255,7 +255,7 @@ rtk git commit -m "build: select stable local signing identity"
 **Files:**
 - Modify: `Scripts/verify-safe-local.sh`
 
-- [ ] **Step 1: Demonstrate that the old verifier does not enforce the recorded mode**
+- [x] **Step 1: Demonstrate that the old verifier does not enforce the recorded mode**
 
 After an explicit ad-hoc build, temporarily put `certificate` and the valid local fingerprint into the two signing evidence files, then run:
 
@@ -268,7 +268,7 @@ rtk proxy /usr/bin/env CODENOTCH_SIGNING_IDENTITY=- Scripts/build-safe-local.sh
 
 Expected before implementation: success, proving the verifier ignores the recorded signer. Restore the two evidence files by rerunning the explicit ad-hoc build.
 
-- [ ] **Step 2: Capture and validate signing metadata**
+- [x] **Step 2: Capture and validate signing metadata**
 
 Immediately after strict signature verification in `Scripts/verify-safe-local.sh`, add:
 
@@ -328,7 +328,7 @@ bundle_version=$(/usr/bin/plutil -extract CFBundleVersion raw "$verified_bundle/
 }
 ```
 
-- [ ] **Step 3: Run both signing modes through the strengthened verifier**
+- [x] **Step 3: Run both signing modes through the strengthened verifier**
 
 Run:
 
@@ -341,7 +341,7 @@ rtk cat build/safe/verification/signature-details.txt
 
 Expected: explicit ad-hoc and local certificate builds both pass; the final signature names `Codenotch Local Signing`, the recorded fingerprint is `FBDC365911D5BECFEF46AB583120B3A56F282185`, and the final designated requirement contains no `cdhash` term.
 
-- [ ] **Step 4: Run static checks and commit**
+- [x] **Step 4: Run static checks and commit**
 
 ```sh
 rtk git diff --check
@@ -357,7 +357,7 @@ rtk git commit -m "verify: enforce safe signing evidence"
 - Runtime-only: `/Applications/Codenotch Safe.app`
 - Runtime-only: `/Applications/Codenotch Safe.app.safe7-rollback`
 
-- [ ] **Step 1: Produce final local evidence**
+- [x] **Step 1: Produce final local evidence**
 
 Run the certificate build outside the sandbox so the private key is available:
 
@@ -371,7 +371,7 @@ rtk defaults export local.audited.codenotch /tmp/codenotch-safe-before.plist
 
 Expected: all checks pass; the signature is certificate-backed, the requirement is stable, and two SHA-256 values are recorded.
 
-- [ ] **Step 2: Preserve safe.7 and install safe.8 atomically**
+- [x] **Step 2: Preserve safe.7 and install safe.8 atomically**
 
 Verify the current installed bundle and confirm the rollback destination is absent. Quit the running app, move the installed safe.7 bundle to `/Applications/Codenotch Safe.app.safe7-rollback`, copy the verified safe.8 bundle into `/Applications/Codenotch Safe.app`, and restore the rollback if the copy or verification fails.
 
@@ -393,7 +393,7 @@ bundle into a fresh `mktemp -d` directory and restore safe.7:
 rtk proxy /bin/zsh -c 'failure_dir=$(/usr/bin/mktemp -d /tmp/codenotch-safe8-failed.XXXXXX); /bin/mv "/Applications/Codenotch Safe.app" "$failure_dir/Codenotch Safe.app"; /bin/mv "/Applications/Codenotch Safe.app.safe7-rollback" "/Applications/Codenotch Safe.app"'
 ```
 
-- [ ] **Step 3: Compare installed evidence and launch**
+- [x] **Step 3: Compare installed evidence and launch**
 
 Run:
 
@@ -405,7 +405,7 @@ rtk open "/Applications/Codenotch Safe.app"
 
 Expected: installed hashes equal the verified build hashes and the installed designated requirement equals the build requirement. If macOS presents the Claude credential prompt, pause for the user to choose **Always Allow**.
 
-- [ ] **Step 4: Validate a fresh normalized refresh without exposing credentials**
+- [x] **Step 4: Validate a fresh normalized refresh without exposing credentials**
 
 Create `/tmp/inspect-codenotch-archive.py` with this bounded decoder:
 
@@ -454,11 +454,11 @@ and `fetchedAt`; it omits every other preference key.
 
 Confirm that at least one enabled provider receives a newer `fetchedAt`, the app process remains the exact installed executable, and observed children remain limited to the audited `claude` and `codex` commands. Do not print Keychain data, token values, account identifiers, raw provider bodies, or unrelated process arguments.
 
-- [ ] **Step 5: Update the audit with observed values**
+- [x] **Step 5: Update the audit with observed values**
 
 Replace the safe.7 version, commit, hashes, ad-hoc-only wording, installed verification, and runtime paragraph in `SECURITY-AUDIT.md` with the exact safe.8 evidence from Steps 1-4. State that the local artifact uses `Codenotch Local Signing`, CI intentionally uses ad-hoc signing, and Claude Code credential rotation can still cause a new prompt.
 
-- [ ] **Step 6: Verify documentation, update the code index, and commit**
+- [x] **Step 6: Verify documentation, update the code index, and commit**
 
 ```sh
 rtk git diff --check

@@ -1,26 +1,29 @@
 # Codenotch Safe: local security audit
 
-Audit date: 2026-09-09  
-Upstream base: `vinzdg/codenotch` at `6482ce0`  
-Audited implementation commit: `e153661919afd4e53551da40d5ee620a77fee242`  
-Xcode 26 CI validation: Safe CI [run #12](https://github.com/x950827/codenotch-safe/actions/runs/34368730509) passed in 3m 5s  
-Audited executable SHA-256: `f153d2502732c4b8e7ad0b80aaef46001fcaafab29a0896b64c33a0d71c9a11c`  
-Audited status-line helper SHA-256: `808a116e07e6dbd51b580ca87c95bfdb173ea5ed514e478cf9a69b68fab8cfae`  
-Bundle identifier: `local.audited.codenotch`  
-Bundle version: `1.6.0-safe.7`
+- Audit date: 2026-09-11
+- Upstream base: `vinzdg/codenotch` at `6482ce0`
+- Audited implementation commit: `d3e3b64eb87395057f484b81a8a29516be15ee44`
+- Xcode 26 CI validation: pending for safe.8
+- Audited executable SHA-256: `e390ec3e0bb925433687369be2c2257da91c30763c6a361e81e1e8f4ab826d44`
+- Audited status-line helper SHA-256: `71f88e9ec21ec38815c74c4714826bfcac2964e110b94568ad0a526574d2786c`
+- Bundle identifier: `local.audited.codenotch`
+- Bundle version: `1.6.0-safe.8`
 
 ## Verdict
 
-The safe.7 build passed its local source, binary, signing, destination,
-executable-boundary, parser, and Xcode 26 CI gates. The exact audited bundle is
-installed at `/Applications/Codenotch Safe.app`; strict signature validation
-and installed-file hashes match the verified build.
+The safe.8 build passed its local source, binary, signing, destination,
+executable-boundary, and parser gates; its Xcode 26 CI gate is pending. The
+exact audited bundle is installed at `/Applications/Codenotch Safe.app`;
+strict signature validation and installed-file hashes match the verified
+build. The local app is signed by `Codenotch Local Signing`; its designated
+requirement binds the stable certificate fingerprint to
+`local.audited.codenotch`.
 
-Live validation completed after the user authorized read-only Keychain access
-and refreshed an expired Claude Code OAuth session with the official
-`claude auth login` flow. Codenotch then fetched and archived fresh normalized
-Claude and Codex limits. A 310-second run of that installed binary met the idle
-CPU and RSS gates and showed only the two expected CLI children.
+The installed safe.8 app refreshed and archived new normalized Claude, Codex,
+and Cursor readings after launch. No credential, account identifier, or raw
+provider response was included in this check. The full 310-second process,
+network, CPU, and RSS evidence remains the safe.7 run below; safe.8 changes only
+the build/signing path, CI configuration, bundle version, verifier, and audit.
 
 ## Allowed data flows
 
@@ -56,9 +59,17 @@ and background plugin command sources. It separately documents
   Sparkle updater symbol.
 - Linked libraries are Apple system frameworks and `libsqlite3`; no third-party
   analytics, crash-reporting, WebView, or updater framework is linked.
-- The ad-hoc signature has no entitlements. The bundle has no app sandbox and
-  no network client entitlement declaration because it is a locally built,
-  unsandboxed macOS app.
+- The local safe.8 signature has no entitlements and uses the self-signed
+  `Codenotch Local Signing` identity with fingerprint
+  `FBDC365911D5BECFEF46AB583120B3A56F282185`. Its designated requirement is
+  `identifier "local.audited.codenotch" and certificate leaf =
+  H"fbdc365911d5becfef46ab583120b3a56f282185"`.
+- GitHub Actions explicitly sets `CODENOTCH_SIGNING_IDENTITY=-`, so CI remains
+  reproducible with an ad-hoc artifact and never receives the local private
+  key. Local builds require one exact valid identity match and fail if it is
+  absent or ambiguous.
+- The bundle has no app sandbox and no network client entitlement declaration
+  because it is a locally built, unsandboxed macOS app.
 - CI actions are pinned to full commit SHAs (`actions/checkout` v4.4.0 and
   `actions/upload-artifact` v7.0.1).
 
@@ -68,10 +79,38 @@ Keychain mutation symbols, an Anthropic endpoint other than the single literal
 above, unexpected entitlements, an unexpected bundle identifier, and
 unrecognized extended attributes. It also executes the bridge against a
 privacy fixture and verifies byte-for-byte forwarding, the minimal persisted
-schema and mode `0600`. Because this repository is under a File Provider-managed
-Documents directory, signature validation runs on a metadata-free staging copy.
+schema and mode `0600`. Signing verification records the selected mode,
+fingerprint, authorities, and designated requirement. A certificate build must
+match the selected leaf fingerprint and must not use a hash-only `cdhash`
+requirement; an ad-hoc build must be explicitly requested. Because this
+repository is under a File Provider-managed Documents directory, signature
+validation runs on a metadata-free staging copy.
 
-## Runtime evidence (safe.7)
+## Runtime evidence
+
+### safe.8 post-install smoke
+
+The installed bundle passed strict deep signature verification at its final
+`/Applications` path. Its executable and helper hashes matched the verified
+build, and its designated requirement matched the requirement above. The
+previous safe.7 installation is preserved at
+`/Applications/Codenotch Safe.app.safe7-rollback`.
+
+The archived normalized readings advanced after the safe.8 launch:
+
+| Provider | Before (UTC) | After (UTC) | Observed normalized reading |
+| --- | --- | --- | --- |
+| Claude | 2026-09-11 16:28:58 | 2026-09-11 16:34:20 | session 7%, weekly 42% |
+| Codex | 2026-09-11 16:29:01 | 2026-09-11 16:34:22 | primary 80% |
+| Cursor | 2026-09-11 16:28:59 | 2026-09-11 16:34:21 | auto 32.29%, API 41.36% |
+
+After refresh, PID 53000 was the exact installed executable and had no child
+process. Its two established connections were the previously audited Anthropic
+destination `160.79.104.10:443` and the machine's `198.18.0.0/15` TUN path.
+This short smoke confirms successful post-install refresh; it does not replace
+the longer boundary and performance run.
+
+### Full safe.7 boundary and performance run
 
 Final run: macOS 26.5.1, 310.095 seconds, 63 resource samples at five-second
 intervals, process/socket probes at one-second intervals with no probe failures.
@@ -133,6 +172,11 @@ is evidence of the tested run, not a system-wide firewall.
    own service-plus-current-user rule. Fixed, non-secret diagnostics distinguish
    a missing item, Keychain denial, malformed field, empty token, unsafe token,
    invalid expiry, and expired credential without logging credential values.
+8. Ad-hoc signing gave every rebuild a hash-only designated requirement, so a
+   Keychain access decision could not follow the app across builds. Local
+   safe.8 builds resolve one exact valid certificate fingerprint and verify the
+   certificate-backed designated requirement. CI requests ad-hoc signing
+   explicitly because it has no access to the private key.
 
 ## Residual trust and limitations
 
@@ -145,7 +189,8 @@ is evidence of the tested run, not a system-wide firewall.
 - The Claude OAuth access token is also sensitive. The app reads the newest
   matching Claude Code Keychain item, holds only the decoded access token and
   expiry in memory, and sends the token only to the exact Anthropic usage URL.
-  macOS may ask the user to grant access to that item.
+  The stable local signature lets a Keychain ACL recognize later builds, but
+  macOS may ask again when Claude Code rotates or replaces its credential item.
 - Anthropic's OAuth usage endpoint is used by Claude Code but is not a published
   public API contract, so a server-side schema or policy change can disable the
   fallback until this audit is updated.
@@ -153,18 +198,18 @@ is evidence of the tested run, not a system-wide firewall.
   and vendor-side behavior are outside this repository. The Claude invocation
   suppresses documented nonessential traffic, and the final run showed only an
   Anthropic-owned destination, but a CLI update requires a new runtime check.
-- The app is ad-hoc signed and is not Developer ID-signed or notarized. It is
-  suitable for this local installation, not redistribution as a trusted public
-  binary.
+- The installed app uses a locally trusted self-signed certificate. It is not
+  Developer ID-signed or notarized and is suitable only for this machine's
+  local installation, not redistribution as a publicly trusted binary. The CI
+  artifact remains ad-hoc signed.
 - Local verification used the available Command Line Tools compiler with the
   compatible macOS 15.4 SDK and deployment target 15.0, then ran the app on
   macOS 26.5.1. The checked-in XcodeGen project targets macOS 26.
 - The full XCTest target cannot run locally because full Xcode/XCTest and
-  XcodeGen are not installed. Pinned `macos-26` Safe CI run #12 ran the full
-  XCTest target, rebuilt the safe.7 bundle, passed `safe-verify`, and uploaded
-  the packaged app. Local source type-check, optimized build, signing, static
-  verifier, bridge fixture, request/parser harness, installed-bundle validation,
-  normalized live-read check, and final runtime gate passed.
+  XcodeGen are not installed. Safe.8 CI validation is pending. Local source
+  type-check, optimized build, certificate signing, signing-selection fixtures,
+  static verifier, bridge fixture, request/parser harness, installed-bundle
+  validation, and normalized live-read check passed.
 - This is a focused engineering audit, not an independent third-party security
   assessment or a formal proof of non-exfiltration.
 
@@ -174,7 +219,14 @@ is evidence of the tested run, not a system-wide firewall.
 make safe-verify
 ```
 
-This type-checks the allowlisted source, produces the optimized local app,
-verifies its signature and entitlements, scans its imports/symbols/destination
-strings, checks its bundle identifier and xattrs, and records the executable
-SHA-256 under `build/safe/verification/`.
+This local command requires the exact valid `Codenotch Local Signing` identity.
+It type-checks the allowlisted source, tests identity selection, produces the
+optimized app, verifies its certificate leaf, designated requirement,
+entitlements, imports, symbols, destinations, bundle metadata, and xattrs, and
+records the evidence under `build/safe/verification/`.
+
+CI uses the explicit ad-hoc equivalent:
+
+```sh
+CODENOTCH_SIGNING_IDENTITY=- make safe-verify
+```
