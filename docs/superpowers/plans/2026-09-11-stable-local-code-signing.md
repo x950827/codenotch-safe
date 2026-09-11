@@ -475,15 +475,21 @@ Expected: any remaining `safe.7` reference is historical rollback context, no st
 **Files:**
 - No new files
 
-- [ ] **Step 1: Run final local verification from a clean tracked tree**
+- [x] **Step 1: Run final local verification from a clean tracked tree**
 
 ```sh
 rtk git status --short --branch
-rtk make safe-verify
+rtk make safe-signing-test
+rtk Scripts/build-safe-local.sh --typecheck
+rtk Scripts/verify-safe-local.sh
 rtk git diff --check
 ```
 
-Expected: only the pre-existing `.build/` and `.cocoindex_code/` paths are untracked, certificate signing passes, and there is no diff error.
+Expected: only the pre-existing `.build/` and `.cocoindex_code/` paths are
+untracked, the resolver and type-check pass, the already installed and audited
+certificate build remains byte-identical, its verifier passes, and there is no
+diff error. Do not re-sign after recording the installed hashes because the
+CMS signing time would produce a different bundle hash.
 
 - [ ] **Step 2: Push the branch and wait for Safe CI**
 
