@@ -3,7 +3,7 @@
 - Audit date: 2026-09-11
 - Upstream base: `vinzdg/codenotch` at `6482ce0`
 - Audited implementation commit: `d3e3b64eb87395057f484b81a8a29516be15ee44`
-- Xcode 26 CI validation: pending for safe.8
+- Xcode 26 CI validation: Safe CI [run #14](https://github.com/x950827/codenotch-safe/actions/runs/34623486434) passed in 3m 29s
 - Audited executable SHA-256: `e390ec3e0bb925433687369be2c2257da91c30763c6a361e81e1e8f4ab826d44`
 - Audited status-line helper SHA-256: `71f88e9ec21ec38815c74c4714826bfcac2964e110b94568ad0a526574d2786c`
 - Bundle identifier: `local.audited.codenotch`
@@ -12,12 +12,11 @@
 ## Verdict
 
 The safe.8 build passed its local source, binary, signing, destination,
-executable-boundary, and parser gates; its Xcode 26 CI gate is pending. The
-exact audited bundle is installed at `/Applications/Codenotch Safe.app`;
-strict signature validation and installed-file hashes match the verified
-build. The local app is signed by `Codenotch Local Signing`; its designated
-requirement binds the stable certificate fingerprint to
-`local.audited.codenotch`.
+executable-boundary, parser, and Xcode 26 CI gates. The exact audited bundle is
+installed at `/Applications/Codenotch Safe.app`; strict signature validation
+and installed-file hashes match the verified build. The local app is signed by
+`Codenotch Local Signing`; its designated requirement binds the stable
+certificate fingerprint to `local.audited.codenotch`.
 
 The installed safe.8 app refreshed and archived new normalized Claude, Codex,
 and Cursor readings after launch. No credential, account identifier, or raw
@@ -206,7 +205,9 @@ is evidence of the tested run, not a system-wide firewall.
   compatible macOS 15.4 SDK and deployment target 15.0, then ran the app on
   macOS 26.5.1. The checked-in XcodeGen project targets macOS 26.
 - The full XCTest target cannot run locally because full Xcode/XCTest and
-  XcodeGen are not installed. Safe.8 CI validation is pending. Local source
+  XcodeGen are not installed. Pinned `macos-26` Safe CI run #14 ran the full
+  XCTest target, rebuilt safe.8 with the explicit ad-hoc CI mode, passed the
+  strengthened verifier, and uploaded the packaged app. Local source
   type-check, optimized build, certificate signing, signing-selection fixtures,
   static verifier, bridge fixture, request/parser harness, installed-bundle
   validation, and normalized live-read check passed.

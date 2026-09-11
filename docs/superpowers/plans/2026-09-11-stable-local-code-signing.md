@@ -491,7 +491,7 @@ certificate build remains byte-identical, its verifier passes, and there is no
 diff error. Do not re-sign after recording the installed hashes because the
 CMS signing time would produce a different bundle hash.
 
-- [ ] **Step 2: Push the branch and wait for Safe CI**
+- [x] **Step 2: Push the branch and wait for Safe CI**
 
 ```sh
 rtk git push origin audit/safe-local
@@ -501,6 +501,6 @@ rtk proxy /bin/zsh -c 'run_id=$(gh run list --workflow "Safe CI" --branch audit/
 
 Expected: the new Safe CI run passes its XCTest suite, explicit ad-hoc safe build, strengthened verifier, and artifact upload.
 
-- [ ] **Step 3: Record final state**
+- [x] **Step 3: Record final state**
 
 Capture the final commit, CI URL, installed version, installed hashes, local signing authority, designated requirement, and rollback path. Report separately that the CI artifact is ad-hoc and the installed local artifact is certificate-signed.
