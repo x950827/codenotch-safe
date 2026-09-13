@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import LocalAuthentication
 import Security
 
 enum SafeClaudeOAuthBoundaryError: Error {
@@ -289,12 +290,11 @@ actor SafeClaudeOAuthUsage {
         }
 
         var item: CFTypeRef?
-        let status = SecItemCopyMatching([
-            kSecClass: kSecClassGenericPassword,
-            kSecValuePersistentRef: newest.persistentReference,
-            kSecReturnData: true,
-            kSecMatchLimit: kSecMatchLimitOne
-        ] as CFDictionary, &item)
+        let status = SecItemCopyMatching(
+            credentialValueQuery(persistentReference: newest.persistentReference)
+                as CFDictionary,
+            &item
+        )
         guard status == errSecSuccess, let data = item as? Data else {
             Log.usage.notice(
                 "claude OAuth stopped before network: Keychain read status \(status, privacy: .public)"
@@ -322,14 +322,10 @@ actor SafeClaudeOAuthUsage {
         account: String
     ) -> [KeychainMatch] {
         var result: CFTypeRef?
-        let status = SecItemCopyMatching([
-            kSecClass: kSecClassGenericPassword,
-            kSecAttrService: service,
-            kSecAttrAccount: account,
-            kSecReturnAttributes: true,
-            kSecReturnPersistentRef: true,
-            kSecMatchLimit: kSecMatchLimitAll
-        ] as CFDictionary, &result)
+        let status = SecItemCopyMatching(
+            credentialMatchQuery(service: service, account: account) as CFDictionary,
+            &result
+        )
         guard status == errSecSuccess else { return [] }
 
         let dictionaries = (result as? [[CFString: Any]])
@@ -344,6 +340,39 @@ actor SafeClaudeOAuthUsage {
                 persistentReference: reference
             )
         }
+    }
+
+    static func credentialMatchQuery(
+        service: String,
+        account: String
+    ) -> [CFString: Any] {
+        [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service,
+            kSecAttrAccount: account,
+            kSecReturnAttributes: true,
+            kSecReturnPersistentRef: true,
+            kSecMatchLimit: kSecMatchLimitAll,
+            kSecUseAuthenticationContext: nonInteractiveContext(),
+        ]
+    }
+
+    static func credentialValueQuery(
+        persistentReference: Data
+    ) -> [CFString: Any] {
+        [
+            kSecClass: kSecClassGenericPassword,
+            kSecValuePersistentRef: persistentReference,
+            kSecReturnData: true,
+            kSecMatchLimit: kSecMatchLimitOne,
+            kSecUseAuthenticationContext: nonInteractiveContext(),
+        ]
+    }
+
+    private static func nonInteractiveContext() -> LAContext {
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        return context
     }
 
     static func makeConfiguration() -> URLSessionConfiguration {

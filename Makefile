@@ -9,7 +9,7 @@ SCHEME  := Codenotch
 DEST    := platform=macOS,arch=arm64
 SAFE_APP := build/safe/Codenotch.app
 
-.PHONY: gen build test test-ci run clean safe-signing-test safe-typecheck safe-build safe-verify
+.PHONY: gen build test test-ci run clean safe-signing-test safe-keychain-policy-test safe-typecheck safe-build safe-verify
 
 gen:
 	xcodegen generate
@@ -33,7 +33,10 @@ safe-typecheck:
 safe-signing-test:
 	Scripts/test-safe-signing-selection.sh
 
-safe-build: safe-typecheck safe-signing-test
+safe-keychain-policy-test:
+	Scripts/test-safe-keychain-policy.sh
+
+safe-build: safe-typecheck safe-signing-test safe-keychain-policy-test
 	Scripts/build-safe-local.sh
 
 safe-verify: safe-build

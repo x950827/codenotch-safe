@@ -208,11 +208,11 @@ bundle_id=$(/usr/bin/plutil -extract CFBundleIdentifier raw "$verified_bundle/Co
 }
 short_version=$(/usr/bin/plutil -extract CFBundleShortVersionString raw "$verified_bundle/Contents/Info.plist")
 bundle_version=$(/usr/bin/plutil -extract CFBundleVersion raw "$verified_bundle/Contents/Info.plist")
-[[ "$short_version" == "1.6.0-safe.8" && "$bundle_version" == "8" ]] || {
+[[ "$short_version" == "1.6.0-safe.9" && "$bundle_version" == "9" ]] || {
     print -u2 "unexpected safe bundle version: $short_version ($bundle_version)"
     exit 1
 }
 
 print "allowed Codenotch network endpoint: https://cursor.com/api/usage-summary"
 print "allowed Codenotch network endpoint: https://api.anthropic.com/api/oauth/usage"
-print "signature, entitlement, import, symbol, destination, and bundle checks passed"
+print "signature, entitlement, import, symbol, destination, Keychain UI, and bundle checks passed"

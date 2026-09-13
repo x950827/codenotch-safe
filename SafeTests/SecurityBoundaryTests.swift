@@ -1,4 +1,6 @@
 import Foundation
+import LocalAuthentication
+import Security
 import SQLite3
 import XCTest
 @testable import Codenotch
@@ -342,6 +344,23 @@ final class SecurityBoundaryTests: XCTestCase {
             SafeClaudeOAuthUsage.credentialServices(configDirectory: directory),
             ["Claude Code-credentials-337ba600", "Claude Code-credentials"]
         )
+    }
+
+    func testClaudeOAuthKeychainQueriesCannotPresentAuthenticationUI() {
+        let queries = [
+            SafeClaudeOAuthUsage.credentialMatchQuery(
+                service: "Claude Code-credentials",
+                account: "vinz"
+            ),
+            SafeClaudeOAuthUsage.credentialValueQuery(
+                persistentReference: Data([0x01])
+            ),
+        ]
+
+        for query in queries {
+            let context = query[kSecUseAuthenticationContext] as? LAContext
+            XCTAssertEqual(context?.interactionNotAllowed, true)
+        }
     }
 
     func testClaudeOAuthNamedProfileCannotFallBackToTheDefaultCredential() {
