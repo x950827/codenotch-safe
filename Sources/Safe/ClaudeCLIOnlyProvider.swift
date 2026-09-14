@@ -13,7 +13,7 @@ enum SafeClaudeProfiles {
 }
 
 /// Reads Claude limits from Claude Code's status-line feed, its own `/usage`
-/// output, the narrowly audited OAuth usage reader, or dated local caches.
+/// output, or dated local caches. The safe build never reads Claude's Keychain.
 actor ClaudeCLIOnlyProvider: UsageProvider {
     nonisolated let profile: ClaudeProfile
     nonisolated let id: String
@@ -22,16 +22,13 @@ actor ClaudeCLIOnlyProvider: UsageProvider {
 
     private let cli: ClaudeUsageCLI?
     private let statusLineCache: SafeClaudeStatusLineCache?
-    private let oauth: (@Sendable () async throws -> [LimitWindow])?
     private let cache: SafeClaudeUsageCache?
 
     init(profile: ClaudeProfile = .default()) {
-        let oauth = SafeClaudeOAuthUsage(profile: profile)
         self.init(
             profile: profile,
             cli: ClaudeUsageCLI.locate(),
             statusLineCache: SafeClaudeStatusLineCache(profile: profile),
-            oauth: { try await oauth.fetch() },
             cache: SafeClaudeUsageCache(profile: profile)
         )
     }
@@ -41,7 +38,6 @@ actor ClaudeCLIOnlyProvider: UsageProvider {
             profile: profile,
             cli: cli,
             statusLineCache: SafeClaudeStatusLineCache(profile: profile),
-            oauth: nil,
             cache: SafeClaudeUsageCache(profile: profile)
         )
     }
@@ -52,28 +48,11 @@ actor ClaudeCLIOnlyProvider: UsageProvider {
         statusLineCache: SafeClaudeStatusLineCache?,
         cache: SafeClaudeUsageCache?
     ) {
-        self.init(
-            profile: profile,
-            cli: cli,
-            statusLineCache: statusLineCache,
-            oauth: nil,
-            cache: cache
-        )
-    }
-
-    init(
-        profile: ClaudeProfile,
-        cli: ClaudeUsageCLI?,
-        statusLineCache: SafeClaudeStatusLineCache?,
-        oauth: (@Sendable () async throws -> [LimitWindow])?,
-        cache: SafeClaudeUsageCache?
-    ) {
         self.profile = profile
         self.id = profile.id
         self.displayName = profile.displayName
         self.cli = cli
         self.statusLineCache = statusLineCache
-        self.oauth = oauth
         self.cache = cache
     }
 
@@ -99,21 +78,7 @@ actor ClaudeCLIOnlyProvider: UsageProvider {
             } catch {
                 // Recent Claude Code releases accept `/usage` in print mode but
                 // emit only per-command cost statistics.
-                Log.usage.debug("claude: CLI did not return usage windows; checking audited OAuth")
-            }
-        }
-
-        var oauthError: Error?
-        if let oauth {
-            do {
-                let windows = try await oauth()
-                guard !windows.isEmpty else {
-                    throw SafeClaudeOAuthBoundaryError.missingUsageWindows
-                }
-                return snapshot(windows: windows, status: .ok)
-            } catch {
-                oauthError = error
-                Log.usage.debug("claude: audited OAuth unavailable; checking dated caches")
+                Log.usage.debug("claude: CLI did not return usage windows; checking dated caches")
             }
         }
 
@@ -136,8 +101,6 @@ actor ClaudeCLIOnlyProvider: UsageProvider {
                 status: .stale(since: reading.fetchedAt)
             )
         }
-
-        if let oauthError { throw oauthError }
 
         throw UsageProviderError.needsAuth
     }

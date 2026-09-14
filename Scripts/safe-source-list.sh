@@ -22,6 +22,7 @@ for path in Sources/**/*.swift(.N); do
             continue
             ;;
         Sources/Model/Fixtures.swift|\
+        Sources/Safe/SafeClaudeOAuthUsage.swift|\
         Sources/Sessions/AntigravityActivityMonitor.swift|\
         Sources/Sessions/GeminiCLIActivityMonitor.swift|\
         Sources/Sessions/GrokActivityMonitor.swift|\

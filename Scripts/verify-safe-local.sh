@@ -109,17 +109,17 @@ for binary in "$verified_executable" "$verified_status_line_helper"; do
     fi
 done
 
-if ! /usr/bin/nm -u "$verified_executable" | /usr/bin/grep -q 'SecItemCopyMatching'; then
-    print -u2 "audited Claude credential reader is missing"
+if /usr/bin/nm -u "$verified_executable" | /usr/bin/grep -q 'SecItemCopyMatching'; then
+    print -u2 "safe main executable must not read Keychain data"
     exit 1
 fi
 if /usr/bin/nm -u "$verified_status_line_helper" | /usr/bin/grep -q 'SecItemCopyMatching'; then
     print -u2 "status-line helper must not read Keychain data"
     exit 1
 fi
-if ! /usr/bin/strings "$verified_executable" \
-    | /usr/bin/grep -Fxq 'https://api.anthropic.com/api/oauth/usage'; then
-    print -u2 "exact Claude usage endpoint is missing"
+if /usr/bin/strings "$verified_executable" \
+    | /usr/bin/grep -Eiq 'api[.]anthropic[.]com|SecItemCopyMatching'; then
+    print -u2 "safe main executable contains a Claude OAuth or Keychain boundary"
     exit 1
 fi
 if /usr/bin/strings "$verified_status_line_helper" \
@@ -129,12 +129,8 @@ if /usr/bin/strings "$verified_status_line_helper" \
 fi
 
 while IFS= read -r -d '' source; do
-    if [[ "$source" == "Sources/Safe/SafeClaudeOAuthUsage.swift" ]]; then
-        if [[ $(/usr/bin/grep -c '^import Security$' "$repo_root/$source") != 1 ]]; then
-            print -u2 "audited Claude OAuth source must import Security exactly once"
-            exit 1
-        fi
-    elif /usr/bin/grep -nE '^import (Security|WebKit|Sparkle)$' "$repo_root/$source"; then
+    if /usr/bin/grep -nE '^import (Security|LocalAuthentication|WebKit|Sparkle)$' \
+        "$repo_root/$source"; then
         print -u2 "forbidden import in compiled source: $source"
         exit 1
     fi
@@ -142,20 +138,6 @@ done < <("$script_dir/safe-source-list.sh")
 if /usr/bin/grep -nE '^import (Security|WebKit|Sparkle)$' \
     "$repo_root/Tools/ClaudeStatusLineBridge/main.swift"; then
     print -u2 "forbidden import in Claude status-line bridge"
-    exit 1
-fi
-
-oauth_source="$repo_root/Sources/Safe/SafeClaudeOAuthUsage.swift"
-if /usr/bin/grep -nE 'SecItem(Add|Update|Delete)|kSecValueData[[:space:]]*:' "$oauth_source"; then
-    print -u2 "Claude OAuth source may read but must never mutate Keychain data"
-    exit 1
-fi
-if [[ $(/usr/bin/grep -cF 'https://api.anthropic.com/api/oauth/usage' "$oauth_source") != 1 ]]; then
-    print -u2 "Claude OAuth source must name exactly one Anthropic endpoint"
-    exit 1
-fi
-if [[ $(/usr/bin/grep -c 'SecItemCopyMatching' "$oauth_source") != 2 ]]; then
-    print -u2 "Claude OAuth source must keep the audited two-stage Keychain read"
     exit 1
 fi
 
@@ -208,11 +190,10 @@ bundle_id=$(/usr/bin/plutil -extract CFBundleIdentifier raw "$verified_bundle/Co
 }
 short_version=$(/usr/bin/plutil -extract CFBundleShortVersionString raw "$verified_bundle/Contents/Info.plist")
 bundle_version=$(/usr/bin/plutil -extract CFBundleVersion raw "$verified_bundle/Contents/Info.plist")
-[[ "$short_version" == "1.6.0-safe.9" && "$bundle_version" == "9" ]] || {
+[[ "$short_version" == "1.6.0-safe.11" && "$bundle_version" == "11" ]] || {
     print -u2 "unexpected safe bundle version: $short_version ($bundle_version)"
     exit 1
 }
 
 print "allowed Codenotch network endpoint: https://cursor.com/api/usage-summary"
-print "allowed Codenotch network endpoint: https://api.anthropic.com/api/oauth/usage"
-print "signature, entitlement, import, symbol, destination, Keychain UI, and bundle checks passed"
+print "signature, entitlement, import, symbol, destination, Keychain-free Claude, and bundle checks passed"
