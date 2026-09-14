@@ -3,7 +3,7 @@
 - Audit date: 2026-09-14
 - Upstream base: `vinzdg/codenotch` at `6482ce0`
 - Audited implementation commit: `4bf16531b8bb4f7f89524d3a7f7f4924b0a5e323`
-- Xcode 26 CI validation: pending for safe.12; the preceding safe.11 Safe CI [run #22](https://github.com/x950827/codenotch-safe/actions/runs/34832265037) passed in 2m 9s
+- Xcode 26 CI validation: safe.12 [push run #26](https://github.com/x950827/codenotch-safe/actions/runs/34856572971) passed in 3m 14s and [PR run #27](https://github.com/x950827/codenotch-safe/actions/runs/34856578947) passed in 3m 32s
 - Audited executable SHA-256: `711843a35331177f063ddd0bc4153c17a89cf6b3407552fdd37d08eae136035b`
 - Audited status-line helper SHA-256: `c447e3e6cdb96a92de036f01a1448e6377be89d67912cc9d472741e73660bf21`
 - Bundle identifier: `local.audited.codenotch`
@@ -12,7 +12,7 @@
 ## Verdict
 
 The safe.12 build passed its local source, binary, signing, destination,
-executable-boundary, and parser gates. Its Xcode 26 CI run is pending. The exact
+executable-boundary, and parser gates, plus both Xcode 26 CI runs. The exact
 audited bundle is installed at `/Applications/Codenotch Safe.app`; strict
 signature validation and installed-file hashes match the verified build. The
 local app is signed by
@@ -283,7 +283,8 @@ is evidence of the tested run, not a system-wide firewall.
   type-check, optimized build, certificate signing, signing-selection fixtures,
   static verifier, bridge fixture, request/parser harness, installed-bundle
   validation, and normalized live-read check passed for safe.12. Safe.12's
-  GitHub XCTest run is pending.
+  push and pull-request CI runs both ran the full XCTest target, rebuilt and
+  verified the audited app, packaged it, and uploaded the artifact successfully.
 - This is a focused engineering audit, not an independent third-party security
   assessment or a formal proof of non-exfiltration.
 
