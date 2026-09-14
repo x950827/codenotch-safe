@@ -146,9 +146,9 @@ struct ClaudeUsageCLI: Sendable {
     }
 
     /// Keep locale and the filesystem identity Claude Code needs for its own
-    /// login, while excluding keys, alternate API origins, telemetry controls,
-    /// hooks and proxy variables inherited from a launcher. Network routing is
-    /// left to macOS rather than made mutable through this process environment.
+    /// login, while excluding keys, alternate API origins, hooks and proxy
+    /// variables inherited from a launcher. Network routing is left to macOS
+    /// rather than made mutable through this process environment.
     static func sanitizedEnvironment(
         profile: ClaudeProfile,
         source: [String: String] = ProcessInfo.processInfo.environment
@@ -161,7 +161,13 @@ struct ClaudeUsageCLI: Sendable {
             ?? "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
         environment["HOME"] = environment["HOME"] ?? NSHomeDirectory()
         environment["TMPDIR"] = environment["TMPDIR"] ?? NSTemporaryDirectory()
-        environment["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+        // The umbrella `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` switch also
+        // blocks the built-in /usage request. Keep the individual privacy and
+        // update controls instead so the CLI can return the limits it owns.
+        environment["DISABLE_AUTOUPDATER"] = "1"
+        environment["DISABLE_TELEMETRY"] = "1"
+        environment["DISABLE_ERROR_REPORTING"] = "1"
+        environment["DISABLE_FEEDBACK_COMMAND"] = "1"
         environment["ENABLE_CLAUDEAI_MCP_SERVERS"] = "false"
         environment["CLAUDE_CODE_DISABLE_ARTIFACT"] = "1"
         environment["CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL"] = "1"

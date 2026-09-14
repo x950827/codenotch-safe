@@ -200,6 +200,7 @@ final class SecurityBoundaryTests: XCTestCase {
                 "ANTHROPIC_BASE_URL": "https://must-not-pass.example",
                 "HTTP_PROXY": "http://must-not-pass.example",
                 "CLAUDE_CONFIG_DIR": "/tmp/wrong-profile",
+                "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
             ]
         )
 
@@ -207,7 +208,11 @@ final class SecurityBoundaryTests: XCTestCase {
         XCTAssertEqual(environment["PATH"], "/usr/bin:/bin")
         XCTAssertEqual(environment["LANG"], "en_US.UTF-8")
         XCTAssertEqual(environment["CLAUDE_CONFIG_DIR"], "/tmp/.claude-work")
-        XCTAssertEqual(environment["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"], "1")
+        XCTAssertNil(environment["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"])
+        XCTAssertEqual(environment["DISABLE_AUTOUPDATER"], "1")
+        XCTAssertEqual(environment["DISABLE_TELEMETRY"], "1")
+        XCTAssertEqual(environment["DISABLE_ERROR_REPORTING"], "1")
+        XCTAssertEqual(environment["DISABLE_FEEDBACK_COMMAND"], "1")
         XCTAssertEqual(environment["ENABLE_CLAUDEAI_MCP_SERVERS"], "false")
         XCTAssertEqual(environment["CLAUDE_CODE_DISABLE_ARTIFACT"], "1")
         XCTAssertEqual(environment["CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL"], "1")

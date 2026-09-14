@@ -122,6 +122,11 @@ if /usr/bin/strings "$verified_executable" \
     print -u2 "safe main executable contains a Claude OAuth or Keychain boundary"
     exit 1
 fi
+if /usr/bin/strings "$verified_executable" \
+    | /usr/bin/grep -Fq 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'; then
+    print -u2 "safe main executable disables the Claude CLI usage request"
+    exit 1
+fi
 if /usr/bin/strings "$verified_status_line_helper" \
     | /usr/bin/grep -Eiq 'anthropic[.]com|SecItemCopyMatching'; then
     print -u2 "status-line helper contains a network or Keychain boundary"
@@ -190,7 +195,7 @@ bundle_id=$(/usr/bin/plutil -extract CFBundleIdentifier raw "$verified_bundle/Co
 }
 short_version=$(/usr/bin/plutil -extract CFBundleShortVersionString raw "$verified_bundle/Contents/Info.plist")
 bundle_version=$(/usr/bin/plutil -extract CFBundleVersion raw "$verified_bundle/Contents/Info.plist")
-[[ "$short_version" == "1.6.0-safe.11" && "$bundle_version" == "11" ]] || {
+[[ "$short_version" == "1.6.0-safe.12" && "$bundle_version" == "12" ]] || {
     print -u2 "unexpected safe bundle version: $short_version ($bundle_version)"
     exit 1
 }
