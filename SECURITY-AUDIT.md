@@ -1,37 +1,35 @@
 # Codenotch Safe: local security audit
 
-- Audit date: 2026-09-13
+- Audit date: 2026-09-14
 - Upstream base: `vinzdg/codenotch` at `6482ce0`
-- Audited implementation commit: `a825210773a66e4c2de627cef7cd176a4f62f3f7`
-- Xcode 26 CI validation: Safe CI [run #18](https://github.com/x950827/codenotch-safe/actions/runs/34774485594) passed in 2m 3s
-- Audited executable SHA-256: `8a53128d95bbb50544f6c03f0d5c26fe78f33270f65978d5974d8e3dd7fe07b6`
-- Audited status-line helper SHA-256: `50074dfe8fb22589cbbd81c79dbb92cfe5318641dfc11050d2ab56716f7961d0`
+- Audited implementation commit: `c15189567e69bb14756633718c9e031316686a01`
+- Xcode 26 CI validation: Safe CI [run #22](https://github.com/x950827/codenotch-safe/actions/runs/34832265037) passed in 2m 9s
+- Audited executable SHA-256: `c96b39abd3fec3caee777dae4e4f85fc91df3e9b30af0ffb8b14a3100197adde`
+- Audited status-line helper SHA-256: `b43bf7efac3224bda3a7e02888bc11e2e1120f3592a300048213d9199dc0eb2f`
 - Bundle identifier: `local.audited.codenotch`
-- Bundle version: `1.6.0-safe.9`
+- Bundle version: `1.6.0-safe.11`
 
 ## Verdict
 
-The safe.9 build passed its local source, binary, signing, destination,
+The safe.11 build passed its local source, binary, signing, destination,
 executable-boundary, parser, and Xcode 26 CI gates. The exact audited bundle is
 installed at `/Applications/Codenotch Safe.app`; strict signature validation
 and installed-file hashes match the verified build. The local app is signed by
 `Codenotch Local Signing`; its designated requirement binds the stable
 certificate fingerprint to `local.audited.codenotch`.
 
-The installed safe.9 app refreshed and archived new normalized Claude, Codex,
-and Cursor readings after launch without displaying authentication UI. Both
-Claude Keychain queries use a non-interactive authentication context: an item
-that is already allowed can be read silently, while an item that requires user
-interaction fails immediately and the provider falls back to dated normalized
-readings. No credential, account identifier, or raw provider response was
-included in this check. The full 310-second process, network, CPU, and RSS
-evidence remains the safe.7 run below.
+Safe.11 removes the Claude OAuth fallback and its source file from the safe
+target. The installed main executable contains no `SecItemCopyMatching` symbol
+or Anthropic OAuth endpoint, so Codenotch cannot present the Claude Code
+Keychain access dialog. Claude now uses only the normalized status-line bridge,
+the restricted Claude CLI, and dated local caches. The full 310-second process,
+network, CPU, and RSS evidence remains the safe.7 run below.
 
 ## Allowed data flows
 
 | Provider | Local access | External action | Persistence in Codenotch |
 | --- | --- | --- | --- |
-| Claude | Reads the default Claude Code profile's local account label and session-status files. A bundled status-line bridge retains only normalized rate-limit fields. If both local live sources fail, one audited Swift file selects the newest item matching both the exact default Claude Code credential service and current-user account, then decodes only `accessToken` and `expiresAt`. Both Keychain queries use `LAContext.interactionNotAllowed`, so a protected item fails without presenting authentication UI. | Prefers the bridge record, then runs the restricted `claude --print ... /usage` command. The final fallback sends one `GET` to exactly `https://api.anthropic.com/api/oauth/usage`; redirects, cookies, URL credentials, caches and connection proxy overrides are disabled. No network request follows a denied or unavailable Keychain read. | The OAuth token is held only in memory until expiry. Only normalized percentages and reset times are archived; raw status-line input, CLI output, Keychain data and response bodies are never stored or logged. Diagnostic messages name only the failed stage, field path, or fixed validation category. |
+| Claude | Reads the default Claude Code profile's local account label and session-status files. A bundled status-line bridge retains only normalized rate-limit fields. Codenotch does not read Claude's Keychain or OAuth token. | Prefers the bridge record, then runs the restricted `claude --print ... /usage` command. There is no Codenotch-owned Claude network request. | Only normalized percentages and reset times from the bridge, CLI, or dated local cache are retained. Raw status-line input and CLI output are never archived or logged. |
 | Cursor | Opens Cursor's editor SQLite store read-only and reads the two values needed to form Cursor's session cookie. Activity comes from `composerHeaders` in the same store. | One `GET` to exactly `https://cursor.com/api/usage-summary`; redirects are rejected. | The session is ephemeral: no cookie jar, credential store, URL cache, response body log, or token persistence. Normalized usage is archived. |
 | Codex | Reads local activity metadata. Codenotch does not read `auth.json` or a bearer token. | Starts the installed `codex app-server` and sends a fixed three-message JSONL exchange: `initialize`, `initialized`, and `account/rateLimits/read`. | Only normalized primary/secondary windows are archived. Other app-server messages are ignored. |
 
@@ -52,16 +50,15 @@ and background plugin command sources. It separately documents
   but are absent from the target and local safe build.
 - Static binary URL extraction includes only these app-owned requests:
   - `https://cursor.com/api/usage-summary` (the app-owned request)
-  - `https://api.anthropic.com/api/oauth/usage` (the audited Claude fallback)
   - `https://cursor.com/dashboard` (user-opened account link)
   - `https://claude.ai/settings/usage` (user-opened account link)
-- Undefined-symbol inspection finds `SecItemCopyMatching` only in the main app.
-  The status-line helper has no Keychain or network boundary, and neither binary
-  contains `SecItemAdd`, `SecItemUpdate`, `SecItemDelete`, `WKWebView`, or a
-  Sparkle updater symbol.
+- Undefined-symbol inspection finds no `SecItemCopyMatching`, `SecItemAdd`,
+  `SecItemUpdate`, or `SecItemDelete` in either binary. The status-line helper
+  has no Keychain or network boundary, and neither binary contains `WKWebView`
+  or a Sparkle updater symbol.
 - Linked libraries are Apple system frameworks and `libsqlite3`; no third-party
   analytics, crash-reporting, WebView, or updater framework is linked.
-- The local safe.9 signature has no entitlements and uses the self-signed
+- The local safe.11 signature has no entitlements and uses the self-signed
   `Codenotch Local Signing` identity with fingerprint
   `FBDC365911D5BECFEF46AB583120B3A56F282185`. Its designated requirement is
   `identifier "local.audited.codenotch" and certificate leaf =
@@ -77,9 +74,8 @@ and background plugin command sources. It separately documents
 
 The verifier rejects a provider-ring `repeatForever` animation, automatic
 `ClaudeProfile.discover`, unrelated imports/symbols/destination strings,
-Keychain mutation symbols, an Anthropic endpoint other than the single literal
-above, a Claude Keychain query without the non-interactive authentication
-context, unexpected entitlements, an unexpected bundle identifier, and
+every Keychain symbol or Security/LocalAuthentication import, every Anthropic
+API endpoint, unexpected entitlements, an unexpected bundle identifier, and
 unrecognized extended attributes. It also executes the bridge against a
 privacy fixture and verifies byte-for-byte forwarding, the minimal persisted
 schema and mode `0600`. Signing verification records the selected mode,
@@ -91,30 +87,40 @@ validation runs on a metadata-free staging copy.
 
 ## Runtime evidence
 
-### safe.9 non-interactive Keychain smoke
+### safe.11 Keychain-free cold-launch test
 
 The installed bundle passed strict deep signature verification at its final
 `/Applications` path. Its executable and helper hashes matched the verified
-build. The previous safe.8 installation remains available at
-`/Applications/Codenotch Safe.app.safe8-rollback`.
+build. Safe.10 remains available at
+`/Applications/Codenotch Safe.app.safe10-rollback`.
 
-The first refresh after installing the final safe.9 build advanced every
-archived normalized reading:
+The final installed build was stopped and launched from a state with no
+`SecurityAgent` or `authorizationhost` process. A 40-second continuous process
+monitor observed no authentication agent. The only matching application after
+the run was PID 54163 at the exact installed Codenotch executable path. An
+earlier safe.11 build passed the same cold-launch monitor independently.
 
-| Provider | Before (UTC) | After (UTC) |
-| --- | --- | --- |
-| Claude | 2026-09-13 18:19:40 | 2026-09-13 18:23:28 |
-| Codex | 2026-09-13 18:16:16 | 2026-09-13 18:23:30 |
-| Cursor | 2026-09-13 18:19:40 | 2026-09-13 18:23:29 |
+The first and next scheduled refresh both completed promptly. Claude returned
+`needsAuth` at 10:14:22 UTC and again at 10:19:22 without any `refresh skipped`
+event. Codex advanced to 10:19:23 and Cursor to 10:19:22. System logs after the
+final cold-launch boundary contained no SecurityAgent or authorizationhost
+event, and the current process list contained only the installed Codenotch
+executable. Installed-binary inspection confirmed that `SecItemCopyMatching`
+is absent.
 
-The next scheduled refresh also completed: Claude advanced to 18:28:27 UTC,
-Codex to 18:28:29, and Cursor to 18:28:28. Immediately afterwards, PID 96658
-was the only matching process and was the exact installed Codenotch executable;
-no `SecurityAgent` or `authorizationhost` process was present, and the
-accessibility inventory contained no password or authentication dialog. This
-verifies the tested refresh and proves that the refresh actor did not remain
-stuck in flight. The source and test gates enforce the no-UI property for both
-Claude Keychain queries.
+### safe.9 and safe.10 invalidation evidence
+
+The previously recorded safe.9 short smoke was insufficient. A user cold
+restart on 2026-09-14 produced the Claude Code Keychain password dialog.
+System logs tied SecurityAgent to the restarted Codenotch process, and the
+previous PID logged
+`refresh skipped: one already in flight` every five minutes until the blocked
+query ended.
+
+Safe.10 added `kSecUseAuthenticationUISkip` alongside the non-interactive
+`LAContext`, but the same clean monitor observed SecurityAgent 2.4 seconds after
+launch. That build was rejected. Safe.11 removes the Keychain path instead of
+trying to control the legacy Keychain ACL dialog.
 
 ### safe.8 post-install smoke
 
@@ -192,26 +198,25 @@ is evidence of the tested run, not a system-wide firewall.
    value with expired windows. The bridge now rejects an expired five-hour reset,
    and the provider accepts the record as live for at most five minutes.
 6. Current Claude Code releases did not expose the user's live `/usage` screen
-   through print mode on this machine. The safe.7 fallback confines direct OAuth
-   access to one source file, two exact credential service names, read-only
-   Keychain calls, an ephemeral session, and one exact Anthropic endpoint.
+   through print mode on this machine. Safe.11 no longer compensates by reading
+   OAuth credentials; it degrades to a dated cache or `needsAuth`.
 7. Service-only Keychain discovery could select a credential belonging to a
-   different Claude Code account record. The final query matches Claude Code's
-   own service-plus-current-user rule. Fixed, non-secret diagnostics distinguish
-   a missing item, Keychain denial, malformed field, empty token, unsafe token,
-   invalid expiry, and expired credential without logging credential values.
+   different Claude Code account record. An intermediate implementation matched
+   Claude Code's service-plus-current-user rule, but safe.11 removes that query
+   and the complete safe OAuth reader.
 8. Ad-hoc signing gave every rebuild a hash-only designated requirement, so a
    Keychain access decision could not follow the app across builds. Local
-   safe.8 builds resolve one exact valid certificate fingerprint and verify the
-   certificate-backed designated requirement. CI requests ad-hoc signing
-   explicitly because it has no access to the private key.
+   builds still resolve one exact valid certificate fingerprint and verify the
+   certificate-backed designated requirement for bundle integrity. CI requests
+   ad-hoc signing explicitly because it has no access to the private key.
 9. A background Claude OAuth fallback could call `SecItemCopyMatching` without
    disabling authentication UI. When a rotated credential required approval,
    the password dialog blocked the refresh actor and every later timer tick was
-   skipped as already in flight. Safe.9 supplies a non-interactive `LAContext`
-   to both the metadata and value queries. A protected item now fails promptly,
-   leaving the last normalized reading visible and dated instead of opening a
-   password dialog or blocking later refreshes.
+   skipped as already in flight. Safe.9's non-interactive `LAContext` and
+   safe.10's additional `kSecUseAuthenticationUISkip` both failed to suppress
+   the legacy ACL dialog on the tested macOS build. Safe.11 deletes the OAuth
+   reader and makes the verifier reject every Keychain symbol in the safe
+   binaries.
 
 ## Residual trust and limitations
 
@@ -221,21 +226,13 @@ is evidence of the tested run, not a system-wide firewall.
 - The Cursor session cookie is sensitive. The app holds it briefly in memory
   and sends it to Cursor's exact usage endpoint; it cannot offer hardware-backed
   isolation for that value.
-- The Claude OAuth access token is also sensitive. The app reads the newest
-  matching Claude Code Keychain item, holds only the decoded access token and
-  expiry in memory, and sends the token only to the exact Anthropic usage URL.
-  The stable local signature lets a Keychain ACL recognize later builds. When
-  Claude Code rotates an item whose ACL would require authentication, the
-  background query is denied without UI; the Claude reading can remain dated
-  until the status-line bridge, CLI, or a silently readable item provides a new
-  value.
-- Anthropic's OAuth usage endpoint is used by Claude Code but is not a published
-  public API contract, so a server-side schema or policy change can disable the
-  fallback until this audit is updated.
+- Claude can show a dated reading or `needsAuth` when neither the status-line
+  bridge nor restricted CLI returns usage windows. This is the deliberate cost
+  of removing Codenotch's access to Claude credentials and OAuth usage.
 - Claude Code and Codex are external executables. Their code, authentication,
   and vendor-side behavior are outside this repository. The Claude invocation
-  suppresses documented nonessential traffic, and the final run showed only an
-  Anthropic-owned destination, but a CLI update requires a new runtime check.
+  suppresses documented nonessential traffic, but a CLI update requires a new
+  runtime check.
 - The installed app uses a locally trusted self-signed certificate. It is not
   Developer ID-signed or notarized and is suitable only for this machine's
   local installation, not redistribution as a publicly trusted binary. The CI
@@ -245,7 +242,7 @@ is evidence of the tested run, not a system-wide firewall.
   macOS 26.5.1. The checked-in XcodeGen project targets macOS 26.
 - XcodeGen 2.46.0 is installed locally, but the machine has Command Line Tools
   rather than full Xcode/XCTest, so `xcodebuild` cannot run the XCTest target.
-  Pinned `macos-26` Safe CI run #18 ran the full XCTest target, rebuilt safe.9
+  Pinned `macos-26` Safe CI run #22 ran the full XCTest target, rebuilt safe.11
   with the explicit ad-hoc CI mode, passed the
   strengthened verifier, and uploaded the packaged app. Local source
   type-check, optimized build, certificate signing, signing-selection fixtures,
@@ -262,7 +259,7 @@ make safe-verify
 
 This local command requires the exact valid `Codenotch Local Signing` identity.
 It type-checks the allowlisted source, tests identity selection and the
-non-interactive Claude Keychain policy, produces the
+Keychain-free Claude policy, produces the
 optimized app, verifies its certificate leaf, designated requirement,
 entitlements, imports, symbols, destinations, bundle metadata, and xattrs, and
 records the evidence under `build/safe/verification/`.
