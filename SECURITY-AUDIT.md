@@ -2,26 +2,30 @@
 
 - Audit date: 2026-09-14
 - Upstream base: `vinzdg/codenotch` at `6482ce0`
-- Audited implementation commit: `c15189567e69bb14756633718c9e031316686a01`
-- Xcode 26 CI validation: Safe CI [run #22](https://github.com/x950827/codenotch-safe/actions/runs/34832265037) passed in 2m 9s
-- Audited executable SHA-256: `c96b39abd3fec3caee777dae4e4f85fc91df3e9b30af0ffb8b14a3100197adde`
-- Audited status-line helper SHA-256: `b43bf7efac3224bda3a7e02888bc11e2e1120f3592a300048213d9199dc0eb2f`
+- Audited implementation commit: `4bf16531b8bb4f7f89524d3a7f7f4924b0a5e323`
+- Xcode 26 CI validation: pending for safe.12; the preceding safe.11 Safe CI [run #22](https://github.com/x950827/codenotch-safe/actions/runs/34832265037) passed in 2m 9s
+- Audited executable SHA-256: `711843a35331177f063ddd0bc4153c17a89cf6b3407552fdd37d08eae136035b`
+- Audited status-line helper SHA-256: `c447e3e6cdb96a92de036f01a1448e6377be89d67912cc9d472741e73660bf21`
 - Bundle identifier: `local.audited.codenotch`
-- Bundle version: `1.6.0-safe.11`
+- Bundle version: `1.6.0-safe.12`
 
 ## Verdict
 
-The safe.11 build passed its local source, binary, signing, destination,
-executable-boundary, parser, and Xcode 26 CI gates. The exact audited bundle is
-installed at `/Applications/Codenotch Safe.app`; strict signature validation
-and installed-file hashes match the verified build. The local app is signed by
+The safe.12 build passed its local source, binary, signing, destination,
+executable-boundary, and parser gates. Its Xcode 26 CI run is pending. The exact
+audited bundle is installed at `/Applications/Codenotch Safe.app`; strict
+signature validation and installed-file hashes match the verified build. The
+local app is signed by
 `Codenotch Local Signing`; its designated requirement binds the stable
 certificate fingerprint to `local.audited.codenotch`.
 
-Safe.11 removes the Claude OAuth fallback and its source file from the safe
+Safe.11 removed the Claude OAuth fallback and its source file from the safe
 target. The installed main executable contains no `SecItemCopyMatching` symbol
 or Anthropic OAuth endpoint, so Codenotch cannot present the Claude Code
-Keychain access dialog. Claude now uses only the normalized status-line bridge,
+Keychain access dialog. Safe.12 restores live Claude limits by allowing the
+restricted Claude CLI's built-in `/usage` request while keeping separate
+auto-update, telemetry, error-reporting, feedback, connector, artifact, and
+marketplace guards. Claude now uses only the normalized status-line bridge,
 the restricted Claude CLI, and dated local caches. The full 310-second process,
 network, CPU, and RSS evidence remains the safe.7 run below.
 
@@ -29,15 +33,19 @@ network, CPU, and RSS evidence remains the safe.7 run below.
 
 | Provider | Local access | External action | Persistence in Codenotch |
 | --- | --- | --- | --- |
-| Claude | Reads the default Claude Code profile's local account label and session-status files. A bundled status-line bridge retains only normalized rate-limit fields. Codenotch does not read Claude's Keychain or OAuth token. | Prefers the bridge record, then runs the restricted `claude --print ... /usage` command. There is no Codenotch-owned Claude network request. | Only normalized percentages and reset times from the bridge, CLI, or dated local cache are retained. Raw status-line input and CLI output are never archived or logged. |
+| Claude | Reads the default Claude Code profile's local account label and session-status files. A bundled status-line bridge retains only normalized rate-limit fields. Codenotch does not read Claude's Keychain or OAuth token. | Prefers the bridge record, then runs the restricted `claude --print ... /usage` command. The installed first-party Claude CLI performs its own usage request; there is no Codenotch-owned Claude network request. | Only normalized percentages and reset times from the bridge, CLI, or dated local cache are retained. Raw status-line input and CLI output are never archived or logged. |
 | Cursor | Opens Cursor's editor SQLite store read-only and reads the two values needed to form Cursor's session cookie. Activity comes from `composerHeaders` in the same store. | One `GET` to exactly `https://cursor.com/api/usage-summary`; redirects are rejected. | The session is ephemeral: no cookie jar, credential store, URL cache, response body log, or token persistence. Normalized usage is archived. |
 | Codex | Reads local activity metadata. Codenotch does not read `auth.json` or a bearer token. | Starts the installed `codex app-server` and sends a fixed three-message JSONL exchange: `initialize`, `initialized`, and `account/rateLimits/read`. | Only normalized primary/secondary windows are archived. Other app-server messages are ignored. |
 
 Anthropic documents `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` as disabling
 auto-updates, telemetry, error reporting, release notes, availability checks,
-and background plugin command sources. It separately documents
-`ENABLE_CLAUDEAI_MCP_SERVERS=false` for disabling hosted connectors and
-`CLAUDE_CODE_DISABLE_ARTIFACT=1` for disabling artifact publishing:
+and background plugin command sources. On Claude Code 2.1.267 that umbrella
+switch also suppressed the built-in `/usage` network result. Safe.12 leaves it
+unset and uses the documented individual `DISABLE_AUTOUPDATER`,
+`DISABLE_TELEMETRY`, `DISABLE_ERROR_REPORTING`, and
+`DISABLE_FEEDBACK_COMMAND` controls instead. It also keeps
+`ENABLE_CLAUDEAI_MCP_SERVERS=false`, `CLAUDE_CODE_DISABLE_ARTIFACT=1`, and
+`CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL=1`:
 [Claude Code environment variables](https://code.claude.com/docs/en/env-vars).
 
 ## Compiled surface
@@ -58,7 +66,7 @@ and background plugin command sources. It separately documents
   or a Sparkle updater symbol.
 - Linked libraries are Apple system frameworks and `libsqlite3`; no third-party
   analytics, crash-reporting, WebView, or updater framework is linked.
-- The local safe.11 signature has no entitlements and uses the self-signed
+- The local safe.12 signature has no entitlements and uses the self-signed
   `Codenotch Local Signing` identity with fingerprint
   `FBDC365911D5BECFEF46AB583120B3A56F282185`. Its designated requirement is
   `identifier "local.audited.codenotch" and certificate leaf =
@@ -75,7 +83,8 @@ and background plugin command sources. It separately documents
 The verifier rejects a provider-ring `repeatForever` animation, automatic
 `ClaudeProfile.discover`, unrelated imports/symbols/destination strings,
 every Keychain symbol or Security/LocalAuthentication import, every Anthropic
-API endpoint, unexpected entitlements, an unexpected bundle identifier, and
+API endpoint, the umbrella environment switch that blocks CLI `/usage`,
+unexpected entitlements, an unexpected bundle identifier, and
 unrecognized extended attributes. It also executes the bridge against a
 privacy fixture and verifies byte-for-byte forwarding, the minimal persisted
 schema and mode `0600`. Signing verification records the selected mode,
@@ -87,9 +96,32 @@ validation runs on a metadata-free staging copy.
 
 ## Runtime evidence
 
+### safe.12 live-limit and cold-launch test
+
+The final installed safe.12 bundle was stopped and launched from a state with
+no `SecurityAgent` or `authorizationhost` process. A continuous 20-second
+process monitor observed no authentication agent. The surviving process was
+PID 4984 at the exact installed executable path.
+
+At 10:54:43 UTC the installed app archived a fresh Claude CLI reading with a
+19% current-session window and a 4% all-models weekly window. Codex and Cursor
+also refreshed on the same launch. The live accessibility tree displayed the
+three rings as `19% 34% 16%`, with Claude first. Installed-binary inspection
+found no `SecItemCopyMatching` or legacy `SecKeychain` symbol, strict deep
+signature verification passed, and installed hashes matched the verified
+safe.12 build. The preceding safe.11 bundle is preserved at
+`/Applications/Codenotch Safe.app.safe11-rollback`.
+
+An independent invocation of Claude Code 2.1.267 reproduced the cause. With
+`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `/usage` returned only local
+contribution statistics and no limit windows. With the umbrella switch absent
+and the four individual privacy/update controls enabled, the same restricted
+command returned the live 19% session and 4% weekly limits without a Keychain
+dialog.
+
 ### safe.11 Keychain-free cold-launch test
 
-The installed bundle passed strict deep signature verification at its final
+The then-installed safe.11 bundle passed strict deep signature verification at its final
 `/Applications` path. Its executable and helper hashes matched the verified
 build. Safe.10 remains available at
 `/Applications/Codenotch Safe.app.safe10-rollback`.
@@ -227,11 +259,14 @@ is evidence of the tested run, not a system-wide firewall.
   and sends it to Cursor's exact usage endpoint; it cannot offer hardware-backed
   isolation for that value.
 - Claude can show a dated reading or `needsAuth` when neither the status-line
-  bridge nor restricted CLI returns usage windows. This is the deliberate cost
-  of removing Codenotch's access to Claude credentials and OAuth usage.
+  bridge nor restricted CLI returns usage windows. Codenotch cannot compensate
+  with the OAuth endpoint because the safe target has no Claude credential
+  access.
 - Claude Code and Codex are external executables. Their code, authentication,
   and vendor-side behavior are outside this repository. The Claude invocation
-  suppresses documented nonessential traffic, but a CLI update requires a new
+  disables specific documented update, telemetry, error-reporting, feedback,
+  connector, artifact, and marketplace behaviors; it must leave the broader
+  nonessential-traffic switch unset for `/usage`. A CLI update requires a new
   runtime check.
 - The installed app uses a locally trusted self-signed certificate. It is not
   Developer ID-signed or notarized and is suitable only for this machine's
@@ -243,11 +278,12 @@ is evidence of the tested run, not a system-wide firewall.
 - XcodeGen 2.46.0 is installed locally, but the machine has Command Line Tools
   rather than full Xcode/XCTest, so `xcodebuild` cannot run the XCTest target.
   Pinned `macos-26` Safe CI run #22 ran the full XCTest target, rebuilt safe.11
-  with the explicit ad-hoc CI mode, passed the
-  strengthened verifier, and uploaded the packaged app. Local source
+  with the explicit ad-hoc CI mode, passed the strengthened verifier, and
+  uploaded the packaged app. Local source
   type-check, optimized build, certificate signing, signing-selection fixtures,
   static verifier, bridge fixture, request/parser harness, installed-bundle
-  validation, and normalized live-read check passed.
+  validation, and normalized live-read check passed for safe.12. Safe.12's
+  GitHub XCTest run is pending.
 - This is a focused engineering audit, not an independent third-party security
   assessment or a formal proof of non-exfiltration.
 
