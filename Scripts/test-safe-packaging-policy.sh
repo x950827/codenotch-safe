@@ -53,4 +53,26 @@ done
     /usr/bin/shasum -a 256 -c SHA256SUMS.txt
 )
 
+renderer="$script_dir/render-homebrew-cask.sh"
+[[ -x "$renderer" ]] || {
+    print -u2 "Homebrew cask renderer is missing"
+    exit 1
+}
+"$renderer"
+cask="$repo_root/build/homebrew-tap/Casks/codenotch-safe.rb"
+[[ -f "$cask" ]]
+/usr/bin/grep -Fq 'version "1.6.0-safe.13"' "$cask"
+/usr/bin/grep -Fq 'app "Codenotch Safe.app"' "$cask"
+/usr/bin/grep -Fq \
+    'https://github.com/x950827/codenotch-safe/releases/download/v#{version}' "$cask"
+if /usr/bin/grep -Eq 'sha256 :no_check|quarantine|postflight|installer ' "$cask"; then
+    print -u2 "rendered cask weakens release policy"
+    exit 1
+fi
+/usr/bin/ruby -c "$cask"
+
+expected_sha=$(/usr/bin/awk 'NF == 2 { print $1; exit }' "$checksums")
+cask_sha=$(/usr/bin/awk -F'"' '/^[[:space:]]*sha256 / { print $2; exit }' "$cask")
+[[ "$cask_sha" == "$expected_sha" ]]
+
 print "safe packaging policy tests passed"

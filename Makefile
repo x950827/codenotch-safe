@@ -9,7 +9,7 @@ SCHEME  := Codenotch
 DEST    := platform=macOS,arch=arm64
 SAFE_APP := build/safe/Codenotch Safe.app
 
-.PHONY: gen build test test-ci run clean safe-signing-test safe-keychain-policy-test safe-typecheck safe-build safe-verify safe-package safe-release-verify
+.PHONY: gen build test test-ci run clean safe-signing-test safe-keychain-policy-test safe-typecheck safe-build safe-verify safe-package safe-release-verify safe-homebrew
 
 gen:
 	xcodegen generate
@@ -47,6 +47,9 @@ safe-package: safe-verify
 
 safe-release-verify: safe-package
 	Scripts/verify-safe-release.sh
+
+safe-homebrew: safe-release-verify
+	Scripts/render-homebrew-cask.sh
 
 run: safe-verify
 	open "$(SAFE_APP)"
