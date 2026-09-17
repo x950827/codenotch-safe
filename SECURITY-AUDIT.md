@@ -9,7 +9,7 @@ Safe.13 keeps the Safe.12 credential and destination boundaries and adds team di
 - the application and Claude status-line helper are universal `arm64` + `x86_64` binaries targeting macOS 15.0;
 - the ad-hoc signed bundle includes the unmodified MIT license and app icon;
 - the DMG contains `Codenotch Safe.app`, an Applications link, `LICENSE.txt`, and explicit first-launch Gatekeeper instructions;
-- the Homebrew Cask pins the exact DMG SHA-256 and contains no quarantine bypass, installer hook, or `sha256 :no_check`;
+- the Homebrew Cask pins the exact DMG SHA-256 and, after verification and installation, removes `com.apple.quarantine` only from `/Applications/Codenotch Safe.app`; it contains no installer script, `spctl` change, or `sha256 :no_check`;
 - CI uses only ad-hoc signing. The tag workflow receives `GITHUB_TOKEN` with `contents: write`; it has no Apple or provider credential and refuses stale tags or replacement uploads.
 
 Local release checks passed:

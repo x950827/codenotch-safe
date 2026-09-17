@@ -11,9 +11,15 @@ cask "codenotch-safe" do
 
   app "Codenotch Safe.app"
 
+  postflight_steps do
+    run "/usr/bin/xattr",
+        args: ["-dr", "com.apple.quarantine", "{{appdir}}/Codenotch Safe.app"],
+        sudo: false
+  end
+
   caveats <<~EOS
     This build is ad-hoc signed and is not notarized by Apple.
-    If macOS blocks its first launch, use System Settings > Privacy & Security > Open Anyway.
-    Do not disable Gatekeeper globally.
+    This cask removes quarantine only from the installed Codenotch Safe app.
+    Homebrew verifies the release's pinned SHA-256 checksum before installation.
   EOS
 end

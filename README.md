@@ -10,7 +10,7 @@ Download `Codenotch-Safe-1.6.0-safe.13-universal.dmg` from the [GitHub Releases 
 brew install --cask x950827/tap/codenotch-safe
 ```
 
-The app is ad-hoc signed and is not notarized by Apple. If macOS blocks the first launch, open **System Settings → Privacy & Security**, find the Codenotch Safe message, choose **Open Anyway**, and confirm **Open** once. Do not disable Gatekeeper globally.
+The cask verifies the release's pinned SHA-256 checksum and then removes quarantine only from the installed `Codenotch Safe.app`, because the app is ad-hoc signed and is not notarized by Apple. If you install from the DMG instead and macOS blocks the first launch, open **System Settings → Privacy & Security**, find the Codenotch Safe message, choose **Open Anyway**, and confirm **Open** once.
 
 Requires macOS 15.0 or later. The release contains native `arm64` and `x86_64` executables.
 
