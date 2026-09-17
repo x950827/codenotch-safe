@@ -595,3 +595,42 @@ final class ProviderActivityControllerTests: XCTestCase {
         XCTAssertTrue(deliveries.last?.1.isEmpty == true)
     }
 }
+
+final class AboutMetadataTests: XCTestCase {
+    func testCreditsAndLinksIdentifyUpstreamAndSafeFork() {
+        XCTAssertEqual(AboutMetadata.originalAuthor, "Vinz")
+        XCTAssertEqual(AboutMetadata.copyright, "Copyright (c) 2026 Vinz")
+        XCTAssertEqual(AboutMetadata.originalSourceURL.absoluteString,
+                       "https://github.com/vinzdg/codenotch")
+        XCTAssertEqual(AboutMetadata.safeSourceURL.absoluteString,
+                       "https://github.com/x950827/codenotch-safe")
+        XCTAssertEqual(AboutMetadata.auditURL.absoluteString,
+                       "https://github.com/x950827/codenotch-safe/blob/main/SECURITY-AUDIT.md")
+        XCTAssertEqual(AboutMetadata.licenseURL.absoluteString,
+                       "https://github.com/vinzdg/codenotch/blob/main/LICENSE")
+    }
+
+    func testSafeChangesNameEveryAuditedBoundary() {
+        let text = AboutMetadata.safeChanges.joined(separator: " ")
+        for required in ["Claude", "Cursor", "Codex", "Keychain",
+                         "bearer", "web view", "updater", "CI"] {
+            XCTAssertTrue(text.localizedCaseInsensitiveContains(required), required)
+        }
+    }
+}
+
+@MainActor
+final class AppMenuActionsTests: XCTestCase {
+    func testCommandsRouteToTheirOwnWindows() {
+        var opened: [String] = []
+        let actions = AppMenuActions(
+            showAbout: { opened.append("about") },
+            showSettings: { opened.append("settings") }
+        )
+
+        actions.openAbout()
+        actions.openSettings()
+
+        XCTAssertEqual(opened, ["about", "settings"])
+    }
+}

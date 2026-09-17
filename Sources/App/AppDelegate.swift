@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var activityController: ProviderActivityController?
     private var preferences: Preferences?
     private var settings: SettingsWindowController?
+    private var about: AboutWindowController?
     private var updater: Updater?
     private var thresholdNotifier: ThresholdNotifier?
     private var statusItem: StatusItemController?
@@ -16,6 +17,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Turns the monitors' running commentary into the one event worth
     /// interrupting for: an agent that has just stopped working.
     private var completions = SessionCompletionWatcher()
+
+    @MainActor
+    lazy var menuActions = AppMenuActions(
+        showAbout: { [weak self] in self?.about?.show() },
+        showSettings: { [weak self] in self?.settings?.show() }
+    )
 
     /// The unit bundle is hosted by this app, so `xcodebuild test` launches it
     /// for real. Without this guard every test run put a live request on the
@@ -91,6 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             fleet.onOpenSettings = { [weak settings] in settings?.show() }
             self.settings = settings
+            self.about = AboutWindowController(preferences: preferences)
 
             if preferences.isFirstLaunch {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak settings] in
