@@ -1,0 +1,33 @@
+name: Safe Release
+
+on:
+  push:
+    tags: ["v*-safe.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - run: brew install xcodegen
+      - run: make test-ci
+      - name: Build distribution
+        run: make safe-homebrew-adhoc
+      - name: Validate and publish tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: zsh {0}
+        run: |
+          source Scripts/safe-release-metadata.sh
+          safe_validate_tag "$GITHUB_REF_NAME"
+          dmg="build/release/Codenotch-Safe-${safe_version}-universal.dmg"
+          checksums="build/release/SHA256SUMS.txt"
+          gh release create "$GITHUB_REF_NAME" "$dmg" "$checksums" \
+            --verify-tag \
+            --title "Codenotch Safe $safe_version" \
+            --notes-file Distribution/RELEASE-NOTES.md

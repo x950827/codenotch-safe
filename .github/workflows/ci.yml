@@ -28,17 +28,17 @@ jobs:
       - name: Run safe unit tests
         run: make test-ci
 
-      - name: Build and verify audited app
+      - name: Build distribution
         env:
           CODENOTCH_SIGNING_IDENTITY: "-"
-        run: make safe-verify
+        run: make safe-homebrew
 
-      - name: Package app
-        run: ditto -c -k --sequesterRsrc --keepParent build/safe/Codenotch.app build/safe/Codenotch-safe.zip
-
-      - name: Upload audited app
+      - name: Upload unpublished distribution
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: Codenotch-safe
-          path: build/safe/Codenotch-safe.zip
+          name: Codenotch-Safe-distribution
+          path: |
+            build/release/Codenotch-Safe-*-universal.dmg
+            build/release/SHA256SUMS.txt
+            build/homebrew-tap/Casks/codenotch-safe.rb
           if-no-files-found: error

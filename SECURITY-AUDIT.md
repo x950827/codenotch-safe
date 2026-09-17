@@ -1,6 +1,31 @@
 # Codenotch Safe: local security audit
 
-- Audit date: 2026-09-14
+## Safe.13 distribution update — 2026-09-17
+
+Safe.13 keeps the Safe.12 credential and destination boundaries and adds team distribution controls:
+
+- disabled Claude, Cursor, or Codex providers now stop both usage reads and activity monitors;
+- the About window credits [Codenotch by Vinz](https://github.com/vinzdg/codenotch), links the Safe source, audit, and MIT license, and describes the audited fork changes;
+- the application and Claude status-line helper are universal `arm64` + `x86_64` binaries targeting macOS 15.0;
+- the ad-hoc signed bundle includes the unmodified MIT license and app icon;
+- the DMG contains `Codenotch Safe.app`, an Applications link, `LICENSE.txt`, and explicit first-launch Gatekeeper instructions;
+- the Homebrew Cask pins the exact DMG SHA-256 and contains no quarantine bypass, installer hook, or `sha256 :no_check`;
+- CI uses only ad-hoc signing. The tag workflow receives `GITHUB_TOKEN` with `contents: write`; it has no Apple or provider credential and refuses stale tags or replacement uploads.
+
+Local release checks passed:
+
+```text
+zsh Scripts/test-safe-release-metadata.sh
+CODENOTCH_SIGNING_IDENTITY=- make safe-verify
+CODENOTCH_SIGNING_IDENTITY=- make safe-release-verify
+zsh Scripts/test-safe-packaging-policy.sh
+zsh Scripts/test-safe-release-workflow.sh
+ruby -c build/homebrew-tap/Casks/codenotch-safe.rb
+```
+
+The locally produced DMG is `Codenotch-Safe-1.6.0-safe.13-universal.dmg`, SHA-256 `49181a6ef877bc3329563f1934db868b8c96cce56929b8ecb9d36b4a91da0afb`. The GitHub workflow run, canonical Release checksum, online Homebrew audit, and clean-account first launch are pending publication. Local `make test-ci` is also pending because this Mac intentionally has Command Line Tools without the full Xcode application; the same XCTest command remains mandatory in CI before release publication.
+
+- Safe.12 audit date: 2026-09-14
 - Upstream base: `vinzdg/codenotch` at `6482ce0`
 - Audited implementation commit: `4bf16531b8bb4f7f89524d3a7f7f4924b0a5e323`
 - Xcode 26 CI validation: safe.12 [push run #26](https://github.com/x950827/codenotch-safe/actions/runs/34856572971) passed in 3m 14s and [PR run #27](https://github.com/x950827/codenotch-safe/actions/runs/34856578947) passed in 3m 32s
