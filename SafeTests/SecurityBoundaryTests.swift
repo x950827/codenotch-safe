@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import SQLite3
 import XCTest
@@ -544,5 +545,53 @@ final class SecurityBoundaryTests: XCTestCase {
 
         XCTAssertNil(result)
         task.cancel()
+    }
+}
+
+@MainActor
+private final class ActivityMonitorSpy: AgentActivityMonitor {
+    private let subject = CurrentValueSubject<[AgentSession], Never>([])
+    var sessions: [AgentSession] { subject.value }
+    var sessionsPublisher: AnyPublisher<[AgentSession], Never> {
+        subject.eraseToAnyPublisher()
+    }
+    private(set) var startCount = 0
+    private(set) var stopCount = 0
+
+    func start() { startCount += 1 }
+    func stop() { stopCount += 1 }
+    func send(_ sessions: [AgentSession]) { subject.send(sessions) }
+}
+
+@MainActor
+final class ProviderActivityControllerTests: XCTestCase {
+    func testDisconnectedMonitorDoesNotStartAndReconnectIsIdempotent() {
+        let cursor = ActivityMonitorSpy()
+        let controller = ProviderActivityController(
+            monitors: ["cursor": cursor],
+            disconnected: ["cursor"],
+            onSessions: { _, _ in }
+        )
+
+        XCTAssertEqual(cursor.startCount, 0)
+        controller.apply(disconnected: [])
+        controller.apply(disconnected: [])
+        XCTAssertEqual(cursor.startCount, 1)
+    }
+
+    func testDisconnectStopsMonitorAndClearsItsSessions() {
+        let cursor = ActivityMonitorSpy()
+        var deliveries: [(String, [AgentSession])] = []
+        let controller = ProviderActivityController(
+            monitors: ["cursor": cursor],
+            disconnected: [],
+            onSessions: { deliveries.append(($0, $1)) }
+        )
+
+        controller.apply(disconnected: ["cursor"])
+
+        XCTAssertEqual(cursor.stopCount, 1)
+        XCTAssertEqual(deliveries.last?.0, "cursor")
+        XCTAssertTrue(deliveries.last?.1.isEmpty == true)
     }
 }

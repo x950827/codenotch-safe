@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notchFleet: NotchFleet?
     private var store: UsageStore?
     private var monitors: [String: any AgentActivityMonitor] = [:]
+    private var activityController: ProviderActivityController?
     private var preferences: Preferences?
     private var settings: SettingsWindowController?
     private var updater: Updater?
@@ -197,21 +198,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for profile in claudeProfiles {
             monitors[profile.id] = ClaudeSessionMonitor(directory: profile.sessionsDirectory)
         }
-        for (id, monitor) in monitors {
-            monitor.sessionsPublisher
-                .receive(on: RunLoop.main)
-                .sink { [weak self, weak fleet] live in
-                    guard let fleet else { return }
-                    fleet.setSessions(providerID: id, sessions: live)
-                    // The publisher delivers on the main run loop, but the
-                    // closure itself is nonisolated — the same assertion the
-                    // notch controller's timers make.
-                    MainActor.assumeIsolated { self?.announceCompletions(sessions: fleet.sessions) }
-                }
-                .store(in: &cancellables)
-            monitor.start()
+        let activityController = ProviderActivityController(
+            monitors: monitors,
+            disconnected: preferences.disconnectedProviders
+        ) { [weak self, weak fleet] id, live in
+            guard let fleet else { return }
+            fleet.setSessions(providerID: id, sessions: live)
+            self?.announceCompletions(sessions: fleet.sessions)
         }
         self.monitors = monitors
+        self.activityController = activityController
+        preferences.$disconnectedProviders
+            .receive(on: RunLoop.main)
+            .sink { [weak activityController] in
+                activityController?.apply(disconnected: $0)
+            }
+            .store(in: &cancellables)
 
         // Applied last, right before the panel goes up: every one of these
         // calls a `NotchFleet.apply(...)` that can trigger `reconcile()` on
