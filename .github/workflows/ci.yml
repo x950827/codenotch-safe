@@ -1,32 +1,44 @@
-name: CI
+name: Safe CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, audit/safe-local]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  test:
-    name: Unit tests
-    # macOS 26, because that is what the app targets. An older image ships an
-    # Xcode that cannot read the project at all — `objectVersion 77` is a
-    # format it does not know — long before it gets as far as the macOS 26
-    # deployment target or the Liquid Glass APIs the settings panel uses.
+  verify:
+    name: Tests and audited bundle
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      # Printed rather than assumed: when this job fails on a runner image
-      # change, the toolchain is the first thing worth seeing.
       - name: Show toolchain
         run: |
           xcodebuild -version
           xcrun --show-sdk-version
+          swiftc --version
 
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      # Unsigned on purpose: no identity exists on a runner, and the tests
-      # read fixtures rather than keychains — see `make test-ci`.
-      - name: Run unit tests
+      - name: Run safe unit tests
         run: make test-ci
+
+      - name: Build distribution
+        env:
+          CODENOTCH_SIGNING_IDENTITY: "-"
+        run: make safe-homebrew
+
+      - name: Upload unpublished distribution
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Codenotch-Safe-distribution
+          path: |
+            build/release/Codenotch-Safe-*-universal.dmg
+            build/release/SHA256SUMS.txt
+            build/homebrew-tap/Casks/codenotch-safe.rb
+          if-no-files-found: error

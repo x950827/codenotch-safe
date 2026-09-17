@@ -417,32 +417,13 @@ struct UsageResponse: Decodable {
 
     /// The frame's wording, for the kinds it drew.
     static func label(forKind kind: String) -> String {
-        switch kind {
-        case "session":       return "Current session"
-        case "weekly_all":    return "All models"
-        case "weekly_opus":   return "Opus"
-        case "weekly_sonnet": return "Sonnet"
-        // Only reached when the response names no model for the window, which
-        // is the one case where there is nothing better to call it.
-        case "weekly_scoped", "scoped": return "Scoped"
-        default:
-            return kind
-                .replacingOccurrences(of: "weekly_", with: "")
-                .replacingOccurrences(of: "_", with: " ")
-                .capitalized
-        }
+        ClaudeUsageLabels.label(forKind: kind)
     }
 
     /// Session first, then the weekly windows — the order the frame shows.
     /// Shared with `ClaudeUsageCLI`, which reads the same windows off the CLI
     /// and must hand them over in the same order.
     static func displayOrder(_ a: LimitWindow, _ b: LimitWindow) -> Bool {
-        func rank(_ id: String) -> Int {
-            if id == "session" { return 0 }
-            if id == "weekly_all" { return 1 }
-            return 2
-        }
-        let (ra, rb) = (rank(a.id), rank(b.id))
-        return ra == rb ? a.id < b.id : ra < rb
+        ClaudeUsageLabels.displayOrder(a, b)
     }
 }

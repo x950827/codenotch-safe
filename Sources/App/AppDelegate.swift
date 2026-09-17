@@ -6,10 +6,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notchFleet: NotchFleet?
     private var store: UsageStore?
     private var monitors: [String: any AgentActivityMonitor] = [:]
+    private var activityController: ProviderActivityController?
     private var preferences: Preferences?
     private var settings: SettingsWindowController?
-    private var whatsNew: WhatsNewWindowController?
-    /// Held for the life of the app: releasing it stops the scheduled checks.
+    private var about: AboutWindowController?
     private var updater: Updater?
     private var thresholdNotifier: ThresholdNotifier?
     private var statusItem: StatusItemController?
@@ -17,6 +17,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Turns the monitors' running commentary into the one event worth
     /// interrupting for: an agent that has just stopped working.
     private var completions = SessionCompletionWatcher()
+
+    @MainActor
+    lazy var menuActions = AppMenuActions(
+        showAbout: { [weak self] in self?.about?.show() },
+        showSettings: { [weak self] in self?.settings?.show() }
+    )
 
     /// The unit bundle is hosted by this app, so `xcodebuild test` launches it
     /// for real. Without this guard every test run put a live request on the
@@ -27,11 +33,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             || NSClassFromString("XCTestCase") != nil
     }
 
-    /// Every Claude Code configuration directory on this Mac — `~/.claude` and
-    /// any `~/.claude-<slug>` — found once at launch. Each gets a usage
-    /// provider and a session monitor of its own, keyed by the same id, so a
-    /// work login's sessions spin the work ring and nobody else's.
-    private let claudeProfiles = ClaudeProfile.discover()
+    /// Only the default Claude Code login. Arbitrary named profiles can attach
+    /// credential helpers, alternate providers, hooks or other executable
+    /// configuration outside this audited source tree.
+    private let claudeProfiles = SafeClaudeProfiles.onlyDefault()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Set here, not in the Info.plist: this call is applied at launch and
@@ -56,50 +61,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let fleet = NotchFleet(scope: preferences.notchScope, edge: preferences.notchEdge)
         self.notchFleet = fleet
 
-        // `CODENOTCH_DEMO=1` puts the design frame's three providers on screen
-        // with its numbers, for screenshots and for eyeballing the layout.
-        if ProcessInfo.processInfo.environment["CODENOTCH_DEMO"] == "1" {
-            fleet.setSnapshots(Fixtures.snapshots())
-        } else {
-            // Nothing needs a browser session at the moment. `WebSessionProvider`
-            // and `Sites.perplexity` are kept: they are the working pattern for a
-            // site behind bot management, and re-registering is one line.
-            let webProviders: [WebSessionProvider] = []
-            fleet.signInItems = webProviders.map { provider in
-                (title: "Sign in to \(provider.displayName)…",
-                 action: { [weak provider] in provider?.presentSignIn() })
-            }
-
-            // Cursor reads the editor's session, or cursor-agent's if the
-            // editor is missing — never a browser one: signing into
-            // cursor.com separately created a second, empty account.
-            //
-            // Built *after* preferences and told what is switched off, so the
-            // very first list it draws already excludes them. Constructed first,
-            // it drew every provider from the archive and only dropped the
-            // switched-off ones once the binding below delivered.
-            Log.usage.info("claude profiles: \(self.claudeProfiles.map(\.displayPath).joined(separator: ", "), privacy: .public)")
-            let store = UsageStore(
-                providers: claudeProfiles.map { ClaudeOAuthProvider(profile: $0) }
-                    + [CursorLocalProvider(), CodexLocalProvider(), AntigravityProvider(),
-                       GLMProvider(), GrokLocalProvider(), OpenCodeProvider(),
-                       GitHubCopilotProvider(),
-                       // A closure, not the value: the provider is an actor and
-                       // re-reads the budget on every fetch, so a ceiling typed
-                       // into Settings applies without a restart.
-                       GeminiAPIProvider(budget: {
-                           Preferences.storedGeminiAPIMonthlyTokenBudget()
-                       })]
-                    + webProviders,
+        // Built after preferences and told what is switched off, so the first
+        // rendered list already has the user's order and enabled set.
+        let safeProviders: [any UsageProvider] = claudeProfiles.map {
+            ClaudeCLIOnlyProvider(profile: $0)
+        } + [CursorSafeProvider(), CodexAppServerProvider()]
+        let store = UsageStore(
+                providers: safeProviders,
+                refreshInterval: 5 * 60,
+                idleRefreshInterval: 5 * 60,
                 disconnected: preferences.disconnectedProviders,
                 // Passed at construction, not left to the sink below, for the
                 // same reason `disconnected` is: the sink delivers a run loop
                 // turn later, so without this every launch draws the built-in
                 // order for a frame and then visibly shuffles.
                 order: preferences.providerOrder
-            )
+        )
 
             let updater = Updater()
+            updater.start()
             self.updater = updater
 
             let settings = SettingsWindowController(
@@ -113,33 +93,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 signIn: { [weak store] in store?.signIn(providerID: $0) ?? false },
                 switchAccount: { [weak store] in
                     store?.openAccountSource(providerID: $0) ?? false
-                },
-                retry: { [weak store] in store?.reauthorize(providerID: $0) }
+                }
             )
             fleet.onOpenSettings = { [weak settings] in settings?.show() }
             self.settings = settings
+            self.about = AboutWindowController(preferences: preferences)
 
-            // What changed, once per version — including on a fresh install,
-            // where it is the introduction.
-            let whatsNew = WhatsNewWindowController(
-                preferences: preferences, version: updater.currentVersion
-            )
-            self.whatsNew = whatsNew
-
-            // An agent app has no dock icon and no window: installed and
-            // launched, it shows four empty rings on a screen edge and no
-            // reason to look at them. Once, on the very first run, it opens the
-            // one place that explains what to connect.
-            //
-            // Sequenced behind What's New rather than beside it: two windows
-            // arriving together is one to dismiss before you can read either.
-            let introduce = { [weak settings] in
-                guard preferences.isFirstLaunch else { return }
-                settings?.show()
-            }
-            whatsNew.onDismiss = introduce
-            if !whatsNew.showIfNeeded() {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: introduce)
+            if preferences.isFirstLaunch {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak settings] in
+                    settings?.show()
+                }
             }
 
             let statusItem = StatusItemController { [weak settings] in settings?.show() }
@@ -205,19 +168,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .sink { [weak store] in store?.order = $0 }
                 .store(in: &cancellables)
 
-            // Redraw the Gemini API ring against the new ceiling.
-            //
-            // `dropFirst` because `@Published` publishes the value it is given
-            // at init, and a refresh there would race the store's first poll.
-            // `receive(on:)` because `@Published` emits in `willSet` — the hop
-            // to the next run loop pass is what lets the `didSet` persist the
-            // number before the provider's closure goes looking for it.
-            preferences.$geminiAPIMonthlyTokenBudget
-                .dropFirst()
-                .receive(on: RunLoop.main)
-                .sink { [weak store] _ in store?.refresh(providerID: "gemini-api") }
-                .store(in: &cancellables)
-
             // Limit crossings become notifications here rather than inside
             // the store: the store fetches, the notifier decides what is
             // worth interrupting someone for, and neither needs to know the
@@ -244,50 +194,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .sink { [weak fleet] ids in fleet?.setRefreshing(ids) }
                 .store(in: &cancellables)
 
-            // CODENOTCH_DISCOVER=<url> loads that page in the signed-in WebView
-            // and logs the API calls it makes — for finding an undocumented
-            // endpoint by watching the site rather than guessing at path names.
-            if let target = ProcessInfo.processInfo.environment["CODENOTCH_DISCOVER"],
-               let url = URL(string: target),
-               let provider = webProviders.first(where: { url.host?.contains($0.id) == true })
-                   ?? webProviders.first {
-                Task {
-                    let calls = await provider.recordCalls(on: url)
-                    Log.usage.notice("discovered: \(calls.joined(separator: "  "), privacy: .public)")
-                }
-            }
             self.store = store
-        }
 
         // What each agent is doing right now, so the notch can say whether it is
         // still working without you switching to it.
         var monitors: [String: any AgentActivityMonitor] = [
-            "cursor": CursorActivityMonitor(),
-            "codex": CodexActivityMonitor(),
-            "gemini": AntigravityActivityMonitor(),
-            "grok": GrokActivityMonitor(),
-            "gemini-api": GeminiCLIActivityMonitor()
+            "cursor": CursorActivityMonitor(interval: 5),
+            "codex": CodexActivityMonitor(interval: 5),
         ]
         for profile in claudeProfiles {
             monitors[profile.id] = ClaudeSessionMonitor(directory: profile.sessionsDirectory)
         }
-        for (id, monitor) in monitors {
-            monitor.sessionsPublisher
-                .receive(on: RunLoop.main)
-                .sink { [weak self, weak fleet] live in
-                    guard let fleet else { return }
-                    fleet.setSessions(providerID: id, sessions: live)
-                    // The publisher delivers on the main run loop, but the
-                    // closure itself is nonisolated — the same assertion the
-                    // notch controller's timers make.
-                    MainActor.assumeIsolated { self?.announceCompletions(sessions: fleet.sessions) }
-                }
-                .store(in: &cancellables)
-            monitor.start()
+        let activityController = ProviderActivityController(
+            monitors: monitors,
+            disconnected: preferences.disconnectedProviders
+        ) { [weak self, weak fleet] id, live in
+            guard let fleet else { return }
+            fleet.setSessions(providerID: id, sessions: live)
+            self?.announceCompletions(sessions: fleet.sessions)
         }
-        // Poll usage hard only while something is actually running.
-        store?.isBusy = { monitors.values.contains { m in m.sessions.contains { $0.state == .busy } } }
         self.monitors = monitors
+        self.activityController = activityController
+        preferences.$disconnectedProviders
+            .receive(on: RunLoop.main)
+            .sink { [weak activityController] in
+                activityController?.apply(disconnected: $0)
+            }
+            .store(in: &cancellables)
 
         // Applied last, right before the panel goes up: every one of these
         // calls a `NotchFleet.apply(...)` that can trigger `reconcile()` on
@@ -324,7 +257,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func announceCompletions(sessions: [String: [AgentSession]]) {
         let events = completions.absorb(sessions)
         guard let event = events.first, let preferences, let fleet = notchFleet else { return }
-        Log.usage.info("session \(event.session.name, privacy: .public) \(String(describing: event.reason), privacy: .public)")
+        Log.sessions.info("agent session changed state")
 
         if preferences.sessionEndSound {
             SessionChime.play(event.reason == .blocked

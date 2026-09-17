@@ -116,10 +116,6 @@ struct SettingsView: View {
     /// A re-render per drop, which is a discrete action and cheap — unlike the
     /// per-drag state this replaced.
     @State private var cursorRefresh = 0
-    /// The credit link lights up under the pointer. A `Link` gives no hover
-    /// feedback of its own on macOS, so without this the only sign it is
-    /// clickable is the cursor.
-    @State private var authorLinkHovered = false
     /// A gesture for this sitting, not a setting: the sidebar comes back on
     /// the next open, the same way a window's own sidebar toggle behaves.
     @State private var isSidebarVisible = true
@@ -130,9 +126,6 @@ struct SettingsView: View {
     /// Returns false when there was nothing to open.
     let signIn: (String) -> Bool
     let switchAccount: (String) -> Bool
-    /// Re-reads a provider's credential. For a declined keychain prompt that is
-    /// the whole remedy: asking again is what puts the prompt back on screen.
-    let retry: (String) -> Void
     @ObservedObject var updater: Updater
 
     var body: some View {
@@ -222,17 +215,11 @@ struct SettingsView: View {
             .frame(height: SettingsView.headerHeight - SettingsView.sidebarInset)
         }
         .frame(width: SettingsView.sidebarWidth)
-        // Liquid Glass, the way System Settings draws its own floating
-        // sidebar on this OS — not a flat tint over the window's material.
-        // The glass is what gives the card an edge and a lift of its own, so
-        // there is no border drawn on top of it.
-        .background {
-            Color.clear.glassEffect(
-                .regular,
-                in: RoundedRectangle(cornerRadius: SettingsView.sidebarCornerRadius,
-                                     style: .continuous)
-            )
-        }
+        .background(
+            .ultraThinMaterial,
+            in: RoundedRectangle(cornerRadius: SettingsView.sidebarCornerRadius,
+                                 style: .continuous)
+        )
         .padding(SettingsView.sidebarInset)
     }
 
@@ -252,7 +239,7 @@ struct SettingsView: View {
 
     /// And brings it back, from the pane's own header.
     ///
-    /// A glass disc rather than a bare symbol: with the card gone there is no
+    /// A material disc rather than a bare symbol: with the card gone there is no
     /// surface under it any more, and a lone glyph floating on the pane reads
     /// as decoration rather than as the control that undoes what just
     /// happened.
@@ -262,7 +249,7 @@ struct SettingsView: View {
                 .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(.primary)
                 .frame(width: 36, height: 36)
-                .background { Color.clear.glassEffect(.regular, in: Circle()) }
+                .background(.ultraThinMaterial, in: Circle())
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -324,7 +311,7 @@ struct SettingsView: View {
                 ForEach(connected) { account in
                     AccountRow(provider: account, preferences: preferences,
                                signOut: signOut, signIn: signIn,
-                               switchAccount: switchAccount, retry: retry,
+                               switchAccount: switchAccount,
                                isOrderable: true,
                                drag: drag,
                                cursorRefresh: cursorRefresh,
@@ -346,12 +333,7 @@ struct SettingsView: View {
                 }
                 // Beside the switches it explains, not stranded at the end of
                 // the page.
-                Text("Codenotch never signs in — each reading is borrowed from the "
-                     + "tool that already holds the account. Signing out here stops "
-                     + "the credential being read and forgets the numbers, but leaves "
-                     + "you signed in to that tool. macOS asks once per tool the "
-                     + "first time, and again whenever you sign in to a different "
-                     + "account; Always Allow keeps it quiet.")
+                Text(AboutMetadata.accountAccessExplanation)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -364,7 +346,7 @@ struct SettingsView: View {
                     ForEach(notConnected) { account in
                         AccountRow(provider: account, preferences: preferences,
                                    signOut: signOut, signIn: signIn,
-                                   switchAccount: switchAccount, retry: retry,
+                                   switchAccount: switchAccount,
                                    isOrderable: false,
                                    drag: drag,
                                    cursorRefresh: cursorRefresh,
@@ -559,9 +541,6 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
 
-    // Startup and updates together: both are about what Codenotch does
-    // without being asked, and one switch under its own header looked
-    // like an oversight rather than a section.
     private var generalPane: some View {
         Form {
             // No title on the group: the pane's own header above already
@@ -575,61 +554,11 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Toggle("Install updates automatically", isOn: Binding(
-                    get: { updater.automatic },
-                    set: { updater.automatic = $0 }
-                ))
-
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    // Disclosed rather than merely silent. An app that updates
-                    // itself unprompted *and* reads other apps' credentials is
-                    // exactly the shape security tooling flags; saying so, with
-                    // a way to switch it off, is the difference between a
-                    // background updater and something that looks like it is
-                    // hiding.
-                    Text("Version \(updater.currentVersion). Updates install in the "
-                         + "background and apply next time Codenotch starts.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                    Button("Check now") { updater.checkNow() }
-                        .controlSize(.small)
-                }
-
-                // Says what happened, where the user is already looking.
-                // Sparkle's own answer to a failed check is a modal reading
-                // "an error occurred in retrieving update information", which
-                // names no cause and offers nothing to do about it.
-                if let message = updater.outcome.message {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(
-                            updater.outcome == .unreachable ? .orange : .secondary
-                        )
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            // An ordinary row here, not a bar pinned across every pane —
-            // that cost every pane a strip of height for one line that only
-            // ever matters on this one, and "blocking the UI" is exactly
-            // what an unrelated pane earns for it.
-            Section {
-                HStack(spacing: 4) {
-                    Text("App designed and developed by")
-                    Link("@hivinz_", destination: SettingsView.authorURL)
-                        .foregroundStyle(authorLinkHovered
-                                         ? preferences.accentColor.color : .primary)
-                        .underline(authorLinkHovered)
-                        .animation(.easeOut(duration: 0.12), value: authorLinkHovered)
-                        .onHover { inside in
-                            authorLinkHovered = inside
-                            if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
-                        }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                Text("Version \(updater.currentVersion). Automatic updates are disabled. "
+                     + "Rebuild this audited fork from reviewed source to update it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .formStyle(.grouped)
@@ -651,9 +580,6 @@ struct SettingsView: View {
             return "That display is disconnected. Codenotch follows the active window until it returns."
         }
     }
-
-
-    static let authorURL = URL(string: "https://x.com/hivinz_")!
 
     /// The band across the top of the panel that the traffic lights sit in.
     ///
@@ -710,22 +636,9 @@ struct SettingsView: View {
     /// this, sees four blank rings and concludes it is broken — and the
     /// distinction that catches them out is Claude *Code*, not the Claude app.
     static let setupCopy =
-        "Codenotch reads usage from tools already signed in on this Mac — it "
-        + "never asks for your password. Install and sign in to any of Claude "
-        + "Code (the terminal tool, not the Claude app), Cursor (the editor or "
-        + "cursor-agent), Codex, Antigravity, GLM, Grok, OpenCode, GitHub "
-        + "Copilot or a Gemini API key (via Gemini CLI, OpenCode or Hermes), "
-        + "and its ring appears in the notch."
-
-    /// Said before it happens rather than after. A system dialogue asking to
-    /// read a *credential*, from an app installed a minute ago, looks alarming
-    /// unless it was expected — and choosing Allow instead of Always Allow makes
-    /// it return on every read, which is what "it asks every time" turns out to
-    /// be.
-    static let keychainCopy =
-        "macOS will ask once for permission to read Claude Code's, "
-        + "Antigravity's and cursor-agent's saved logins. Choose Always Allow "
-        + "— plain Allow makes it ask again every time."
+        "Sign in to Claude Code, Codex, or the Cursor editor. Claude and Codex "
+        + "are queried through their own CLIs; Cursor usage is read from the "
+        + "editor session and sent only to cursor.com."
 
     /// A provider has just been switched on: put it after the ones already
     /// connected.
@@ -770,7 +683,7 @@ struct SettingsView: View {
 
     private var setupNote: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "sparkles")
+            Image(systemName: "checkmark.shield.fill")
                 .foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 3) {
                 Text("Connect an assistant to get started")
@@ -780,11 +693,6 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text(SettingsView.keychainCopy)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 2)
             }
         }
         .padding(12)
@@ -913,7 +821,6 @@ private struct AccountRow: View {
     let signOut: (String) -> Void
     let signIn: (String) -> Bool
     let switchAccount: (String) -> Bool
-    let retry: (String) -> Void
     /// Whether this row has a place in the notch to argue about. A provider
     /// switched off draws no ring, so there is nothing for a drag to arrange.
     let isOrderable: Bool
@@ -1035,21 +942,6 @@ private struct AccountRow: View {
                 // if the browser is not signed in. Sending someone to a login
                 // screen from a row that says "connected" is the wrong answer
                 // whenever the real thing is one launch away.
-                // The way back from a declined keychain prompt, and the only
-                // one: declining is easy to do by reflex, and nothing else on
-                // screen will ask macOS again.
-                //
-                // Shown only while macOS is actually refusing. It used to be
-                // permanent for any keychain-backed provider, which meant it sat
-                // there next to a working account offering to fix nothing — and
-                // when it *was* needed there was no way to tell the two apart.
-                if isConnected, provider.wasRefusedAccess {
-                    Button("Allow access…") { retry(provider.id) }
-                        .controlSize(.small)
-                        .help("Asks macOS for \(provider.name)'s saved login again. "
-                              + "Choose Always Allow and it will stop asking.")
-                }
-
                 if isConnected, let destination {
                     Button(destination.title) { open(destination) }
                         .controlSize(.small)
@@ -1165,14 +1057,6 @@ private struct AccountRow: View {
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-        } else if provider.wasRefusedAccess {
-            // Not a sign-in problem, so do not send them off to sign in. The
-            // credential is right there and macOS is the one saying no — the
-            // remedy is the button on this same row.
-            Text("macOS is not letting Codenotch read \(provider.name)'s saved "
-                 + "login. Choose Allow access… above, then Always Allow.")
-                .foregroundStyle(.orange)
-                .fixedSize(horizontal: false, vertical: true)
         } else {
             HStack(spacing: 8) {
                 Text(provider.signIn.explanation)

@@ -197,7 +197,14 @@ final class UsageStore: ObservableObject {
         sinceLastAttempt: TimeInterval,
         idleInterval: TimeInterval
     ) -> Bool {
-        isBusy || sinceLastAttempt >= idleInterval
+        // `Timer` and `Date` use different clocks. A repeating tick scheduled
+        // for exactly the idle boundary can therefore observe 299.9 seconds
+        // since a 300-second attempt and skip until the next tick five minutes
+        // later. The tick itself cannot occur more often than
+        // `refreshInterval`, so accepting only the final second prevents that
+        // ten-minute gap without increasing the request cadence.
+        let boundaryTolerance = min(1, max(0, idleInterval))
+        return isBusy || sinceLastAttempt >= idleInterval - boundaryTolerance
     }
 
     func refreshNow() {

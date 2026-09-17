@@ -1,0 +1,6 @@
+Codenotch Safe is ad-hoc signed and is not notarized by Apple.
+If macOS blocks the first launch, open System Settings > Privacy & Security,
+find the Codenotch Safe message, and choose Open Anyway. Confirm Open once.
+Do not disable Gatekeeper globally.
+Source: https://github.com/x950827/codenotch-safe
+Audit: https://github.com/x950827/codenotch-safe/blob/main/SECURITY-AUDIT.md
