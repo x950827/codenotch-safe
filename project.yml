@@ -49,6 +49,7 @@ targets:
         LSMinimumSystemVersion: "26.0"
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSHumanReadableCopyright: Copyright (c) 2026 Vinz. Codenotch Safe modifications distributed under the MIT License.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: local.audited.codenotch
@@ -60,6 +61,8 @@ targets:
     platform: macOS
     sources:
       - path: SafeTests
+      - path: Sources/Resources/LICENSE.txt
+        buildPhase: resources
     dependencies:
       - target: Codenotch
     settings:

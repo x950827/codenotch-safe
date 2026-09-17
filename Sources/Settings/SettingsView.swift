@@ -126,9 +126,6 @@ struct SettingsView: View {
     /// Returns false when there was nothing to open.
     let signIn: (String) -> Bool
     let switchAccount: (String) -> Bool
-    /// Re-reads a provider's credential. For a declined keychain prompt that is
-    /// the whole remedy: asking again is what puts the prompt back on screen.
-    let retry: (String) -> Void
     @ObservedObject var updater: Updater
 
     var body: some View {
@@ -314,7 +311,7 @@ struct SettingsView: View {
                 ForEach(connected) { account in
                     AccountRow(provider: account, preferences: preferences,
                                signOut: signOut, signIn: signIn,
-                               switchAccount: switchAccount, retry: retry,
+                               switchAccount: switchAccount,
                                isOrderable: true,
                                drag: drag,
                                cursorRefresh: cursorRefresh,
@@ -336,12 +333,7 @@ struct SettingsView: View {
                 }
                 // Beside the switches it explains, not stranded at the end of
                 // the page.
-                Text("Codenotch never signs in — each reading is borrowed from the "
-                     + "tool that already holds the account. Signing out here stops "
-                     + "the credential being read and forgets the numbers, but leaves "
-                     + "you signed in to that tool. macOS asks once per tool the "
-                     + "first time, and again whenever you sign in to a different "
-                     + "account; Always Allow keeps it quiet.")
+                Text(AboutMetadata.accountAccessExplanation)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -354,7 +346,7 @@ struct SettingsView: View {
                     ForEach(notConnected) { account in
                         AccountRow(provider: account, preferences: preferences,
                                    signOut: signOut, signIn: signIn,
-                                   switchAccount: switchAccount, retry: retry,
+                                   switchAccount: switchAccount,
                                    isOrderable: false,
                                    drag: drag,
                                    cursorRefresh: cursorRefresh,
@@ -829,7 +821,6 @@ private struct AccountRow: View {
     let signOut: (String) -> Void
     let signIn: (String) -> Bool
     let switchAccount: (String) -> Bool
-    let retry: (String) -> Void
     /// Whether this row has a place in the notch to argue about. A provider
     /// switched off draws no ring, so there is nothing for a drag to arrange.
     let isOrderable: Bool
@@ -951,21 +942,6 @@ private struct AccountRow: View {
                 // if the browser is not signed in. Sending someone to a login
                 // screen from a row that says "connected" is the wrong answer
                 // whenever the real thing is one launch away.
-                // The way back from a declined keychain prompt, and the only
-                // one: declining is easy to do by reflex, and nothing else on
-                // screen will ask macOS again.
-                //
-                // Shown only while macOS is actually refusing. It used to be
-                // permanent for any keychain-backed provider, which meant it sat
-                // there next to a working account offering to fix nothing — and
-                // when it *was* needed there was no way to tell the two apart.
-                if isConnected, provider.wasRefusedAccess {
-                    Button("Allow access…") { retry(provider.id) }
-                        .controlSize(.small)
-                        .help("Asks macOS for \(provider.name)'s saved login again. "
-                              + "Choose Always Allow and it will stop asking.")
-                }
-
                 if isConnected, let destination {
                     Button(destination.title) { open(destination) }
                         .controlSize(.small)
@@ -1081,14 +1057,6 @@ private struct AccountRow: View {
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-        } else if provider.wasRefusedAccess {
-            // Not a sign-in problem, so do not send them off to sign in. The
-            // credential is right there and macOS is the one saying no — the
-            // remedy is the button on this same row.
-            Text("macOS is not letting Codenotch read \(provider.name)'s saved "
-                 + "login. Choose Allow access… above, then Always Allow.")
-                .foregroundStyle(.orange)
-                .fixedSize(horizontal: false, vertical: true)
         } else {
             HStack(spacing: 8) {
                 Text(provider.signIn.explanation)

@@ -634,3 +634,38 @@ final class AppMenuActionsTests: XCTestCase {
         XCTAssertEqual(opened, ["about", "settings"])
     }
 }
+
+final class SafeDisclosureTests: XCTestCase {
+    func testAccountCopyMatchesSafeCredentialBoundary() {
+        let text = AboutMetadata.accountAccessExplanation
+        XCTAssertTrue(text.contains("disabled provider is not queried"))
+        XCTAssertTrue(text.contains("Cursor"))
+        XCTAssertFalse(text.localizedCaseInsensitiveContains("Always Allow"))
+        XCTAssertFalse(text.localizedCaseInsensitiveContains("Keychain password"))
+    }
+
+    func testBundledLicenseMatchesRepositoryLicense() throws {
+        let bundled = try XCTUnwrap(Bundle(for: Self.self)
+            .url(forResource: "LICENSE", withExtension: "txt"))
+        let text = try String(contentsOf: bundled, encoding: .utf8)
+        XCTAssertTrue(text.contains("MIT License"))
+        XCTAssertTrue(text.contains("Copyright (c) 2026 Vinz"))
+        XCTAssertTrue(text.contains("copies or substantial portions"))
+    }
+
+    @MainActor
+    func testSafe12PreferenceKeysRemainReadable() {
+        let suite = "Safe12Preferences.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(["cursor"], forKey: "hiddenProviders")
+        defaults.set(NotchScreenScope.allDisplays.rawValue, forKey: "notchScope")
+        defaults.set(AppPresence.menuBar.rawValue, forKey: "appPresence")
+
+        let preferences = Preferences(defaults: defaults)
+
+        XCTAssertEqual(preferences.disconnectedProviders, Set(["cursor"]))
+        XCTAssertEqual(preferences.notchScope, .allDisplays)
+        XCTAssertEqual(preferences.appPresence, .menuBar)
+    }
+}

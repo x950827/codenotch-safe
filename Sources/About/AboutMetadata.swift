@@ -4,6 +4,7 @@ enum AboutMetadata {
     static let originalAuthor = "Vinz"
     static let copyright = "Copyright (c) 2026 Vinz"
     static let attribution = "Codenotch Safe is based on Codenotch by Vinz."
+    static let accountAccessExplanation = "Codenotch Safe reads limits from local integrations already used by Claude and Codex. Cursor may contact its usage endpoint when enabled. A disabled provider is not queried and its activity monitor is stopped."
 
     static let originalSourceURL = URL(string: "https://github.com/vinzdg/codenotch")!
     static let safeSourceURL = URL(string: "https://github.com/x950827/codenotch-safe")!

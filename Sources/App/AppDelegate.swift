@@ -93,8 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 signIn: { [weak store] in store?.signIn(providerID: $0) ?? false },
                 switchAccount: { [weak store] in
                     store?.openAccountSource(providerID: $0) ?? false
-                },
-                retry: { [weak store] in store?.reauthorize(providerID: $0) }
+                }
             )
             fleet.onOpenSettings = { [weak settings] in settings?.show() }
             self.settings = settings
