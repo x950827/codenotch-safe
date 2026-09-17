@@ -3,13 +3,15 @@ set -euo pipefail
 
 script_dir=${0:A:h}
 repo_root=${script_dir:h}
+source "$script_dir/safe-release-metadata.sh"
+
 mode=${1:-build}
+deployment_target=15.0
 build_root="$repo_root/build/safe"
-bundle="$build_root/Codenotch.app"
+bundle="$build_root/$safe_app_name.app"
 executable="$bundle/Contents/MacOS/Codenotch"
 status_line_helper="$bundle/Contents/MacOS/CodenotchClaudeStatusLine"
-module_cache="$build_root/module-cache"
-helper_module_cache="$build_root/helper-module-cache"
+architectures=(arm64 x86_64)
 
 source_files=()
 while IFS= read -r -d '' source; do
@@ -23,16 +25,12 @@ fi
 
 if [[ -n ${CODENOTCH_SDK_PATH:-} ]]; then
     sdk_path="$CODENOTCH_SDK_PATH"
-    deployment_target=${CODENOTCH_DEPLOYMENT_TARGET:-26.0}
 elif [[ -d /Applications/Xcode.app/Contents/Developer ]]; then
     sdk_path=$(/usr/bin/xcrun --sdk macosx --show-sdk-path)
-    deployment_target=26.0
 else
-    # This Mac's 26.5 SDK and Command Line Tools compiler have mismatched build
-    # revisions. The bundled 15.4 SDK is compatible and the source uses no API
-    # newer than it, so local audit builds target 15.0.
+    # The installed Command Line Tools compiler matches this bundled SDK.
+    # Release slices still target macOS 15.0.
     sdk_path=/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk
-    deployment_target=15.0
 fi
 
 if [[ ! -d "$sdk_path" ]]; then
@@ -40,31 +38,27 @@ if [[ ! -d "$sdk_path" ]]; then
     exit 1
 fi
 
-/bin/mkdir -p "$module_cache"
-common_flags=(
-    -parse-as-library
-    -module-name Codenotch
-    -sdk "$sdk_path"
-    -target "arm64-apple-macosx${deployment_target}"
-    -module-cache-path "$module_cache"
-)
-
 helper_sources=(
     "$repo_root/Sources/Safe/ClaudeStatusLineRecord.swift"
     "$repo_root/Tools/ClaudeStatusLineBridge/main.swift"
 )
-helper_flags=(
-    -parse-as-library
-    -module-name CodenotchClaudeStatusLine
-    -sdk "$sdk_path"
-    -target "arm64-apple-macosx${deployment_target}"
-    -module-cache-path "$helper_module_cache"
-)
 
 if [[ "$mode" == "--typecheck" ]]; then
-    /usr/bin/xcrun swiftc -typecheck "${common_flags[@]}" "${source_files[@]}"
-    /bin/mkdir -p "$helper_module_cache"
-    /usr/bin/xcrun swiftc -typecheck "${helper_flags[@]}" "${helper_sources[@]}"
+    typecheck_root="$build_root/typecheck"
+    /bin/rm -rf "$typecheck_root"
+    for architecture in "${architectures[@]}"; do
+        arch_root="$typecheck_root/$architecture"
+        /bin/mkdir -p "$arch_root/main-module-cache" "$arch_root/helper-module-cache"
+        /usr/bin/xcrun swiftc -typecheck -parse-as-library -module-name Codenotch \
+            -sdk "$sdk_path" -target "${architecture}-apple-macosx${deployment_target}" \
+            -module-cache-path "$arch_root/main-module-cache" \
+            "${source_files[@]}"
+        /usr/bin/xcrun swiftc -typecheck -parse-as-library \
+            -module-name CodenotchClaudeStatusLine \
+            -sdk "$sdk_path" -target "${architecture}-apple-macosx${deployment_target}" \
+            -module-cache-path "$arch_root/helper-module-cache" \
+            "${helper_sources[@]}"
+    done
     exit 0
 fi
 if [[ "$mode" != "build" ]]; then
@@ -83,33 +77,81 @@ else
     signing_mode=certificate
 fi
 
-/bin/rm -rf "$bundle"
-/bin/mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
+/bin/rm -rf "$build_root"
+/bin/mkdir -p "$build_root"
 
-/usr/bin/xcrun swiftc -O "${common_flags[@]}" "${source_files[@]}" \
-    -lsqlite3 \
-    -o "$executable"
-/bin/mkdir -p "$helper_module_cache"
-/usr/bin/xcrun swiftc -O "${helper_flags[@]}" "${helper_sources[@]}" \
-    -o "$status_line_helper"
+for architecture in "${architectures[@]}"; do
+    arch_root="$build_root/$architecture"
+    /bin/mkdir -p "$arch_root/main-module-cache" "$arch_root/helper-module-cache"
+    /usr/bin/xcrun swiftc -O -parse-as-library -module-name Codenotch \
+        -sdk "$sdk_path" -target "${architecture}-apple-macosx${deployment_target}" \
+        -module-cache-path "$arch_root/main-module-cache" \
+        "${source_files[@]}" -lsqlite3 -o "$arch_root/Codenotch"
+    /usr/bin/xcrun swiftc -O -parse-as-library -module-name CodenotchClaudeStatusLine \
+        -sdk "$sdk_path" -target "${architecture}-apple-macosx${deployment_target}" \
+        -module-cache-path "$arch_root/helper-module-cache" \
+        "${helper_sources[@]}" -o "$arch_root/CodenotchClaudeStatusLine"
+done
+
+/bin/mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
+/usr/bin/lipo -create "$build_root/arm64/Codenotch" "$build_root/x86_64/Codenotch" \
+    -output "$executable"
+/usr/bin/lipo -create "$build_root/arm64/CodenotchClaudeStatusLine" \
+    "$build_root/x86_64/CodenotchClaudeStatusLine" -output "$status_line_helper"
 
 /bin/cp "$repo_root/Sources/Assets.xcassets/MenuBarIcon.imageset/menubar-codenotch.svg" \
     "$bundle/Contents/Resources/MenuBarIcon.svg"
+/bin/cp "$repo_root/Sources/Resources/LICENSE.txt" \
+    "$bundle/Contents/Resources/LICENSE.txt"
+
+# Assemble the ICNS container directly from the audited PNGs. Copying the
+# asset-catalog directory with `ditto` tries to reproduce File Provider
+# provenance attributes and fails inside Documents; the ICNS format stores
+# these PNG payloads verbatim behind a type and big-endian length.
+icon_source="$repo_root/Sources/Assets.xcassets/AppIcon.appiconset"
+icon_output="$bundle/Contents/Resources/AppIcon.icns"
+icon_types=(icp4 icp5 icp6 ic07 ic08 ic09 ic10)
+icon_files=(
+    icon_16x16.png
+    icon_32x32.png
+    icon_32x32@2x.png
+    icon_128x128.png
+    icon_256x256.png
+    icon_512x512.png
+    icon_512x512@2x.png
+)
+icon_length=8
+for icon_file in "${icon_files[@]}"; do
+    (( icon_length += 8 + $(/usr/bin/stat -f %z "$icon_source/$icon_file") ))
+done
+{
+    print -rn -- icns
+    printf '%08x' "$icon_length" | /usr/bin/xxd -r -p
+    for index in {1..${#icon_files[@]}}; do
+        icon_file="$icon_source/${icon_files[$index]}"
+        element_length=$(( 8 + $(/usr/bin/stat -f %z "$icon_file") ))
+        print -rn -- "${icon_types[$index]}"
+        printf '%08x' "$element_length" | /usr/bin/xxd -r -p
+        /bin/cat "$icon_file"
+    done
+} > "$icon_output"
 
 /bin/cat > "$bundle/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleDisplayName</key><string>Codenotch Safe</string>
+    <key>CFBundleDisplayName</key><string>$safe_app_name</string>
     <key>CFBundleExecutable</key><string>Codenotch</string>
+    <key>CFBundleIconFile</key><string>AppIcon.icns</string>
     <key>CFBundleIdentifier</key><string>local.audited.codenotch</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-    <key>CFBundleName</key><string>Codenotch Safe</string>
+    <key>CFBundleName</key><string>$safe_app_name</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.6.0-safe.12</string>
-    <key>CFBundleVersion</key><string>12</string>
+    <key>CFBundleShortVersionString</key><string>$safe_version</string>
+    <key>CFBundleVersion</key><string>$safe_build</string>
     <key>LSMinimumSystemVersion</key><string>$deployment_target</string>
+    <key>NSHumanReadableCopyright</key><string>Copyright (c) 2026 Vinz. Codenotch Safe modifications distributed under the MIT License.</string>
 </dict>
 </plist>
 PLIST
@@ -120,7 +162,7 @@ PLIST
 # resource metadata. The verifier repeats the copy and validates the signature.
 signing_staging=$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/codenotch-sign.XXXXXX")
 trap '/bin/rm -rf "$signing_staging"' EXIT
-staged_bundle="$signing_staging/Codenotch.app"
+staged_bundle="$signing_staging/$safe_app_name.app"
 /usr/bin/ditto --norsrc "$bundle" "$staged_bundle"
 /usr/bin/xattr -cr "$staged_bundle"
 /usr/bin/codesign --force --deep --sign "$signing_identity" "$staged_bundle"

@@ -7,7 +7,7 @@ endif
 PROJECT := Codenotch.xcodeproj
 SCHEME  := Codenotch
 DEST    := platform=macOS,arch=arm64
-SAFE_APP := build/safe/Codenotch.app
+SAFE_APP := build/safe/Codenotch Safe.app
 
 .PHONY: gen build test test-ci run clean safe-signing-test safe-keychain-policy-test safe-typecheck safe-build safe-verify
 

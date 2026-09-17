@@ -3,7 +3,9 @@ set -euo pipefail
 
 script_dir=${0:A:h}
 repo_root=${script_dir:h}
-bundle="$repo_root/build/safe/Codenotch.app"
+source "$script_dir/safe-release-metadata.sh"
+
+bundle="$repo_root/build/safe/$safe_app_name.app"
 executable="$bundle/Contents/MacOS/Codenotch"
 status_line_helper="$bundle/Contents/MacOS/CodenotchClaudeStatusLine"
 evidence="$repo_root/build/safe/verification"
@@ -37,11 +39,29 @@ done < <(/usr/bin/xattr -r "$bundle")
 
 verification_staging=$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/codenotch-verify.XXXXXX")
 trap '/bin/rm -rf "$verification_staging"' EXIT
-verified_bundle="$verification_staging/Codenotch.app"
+verified_bundle="$verification_staging/$safe_app_name.app"
 verified_executable="$verified_bundle/Contents/MacOS/Codenotch"
 verified_status_line_helper="$verified_bundle/Contents/MacOS/CodenotchClaudeStatusLine"
 /usr/bin/ditto --norsrc "$bundle" "$verified_bundle"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$verified_bundle"
+
+require_universal() {
+    local binary=$1
+    local slices
+    slices=$(/usr/bin/lipo -archs "$binary")
+    [[ "$slices" == "x86_64 arm64" || "$slices" == "arm64 x86_64" ]] || {
+        print -u2 "safe executable is not universal: $binary ($slices)"
+        exit 1
+    }
+}
+require_universal "$verified_executable"
+require_universal "$verified_status_line_helper"
+
+[[ -f "$verified_bundle/Contents/Resources/AppIcon.icns" ]] || {
+    print -u2 "safe app icon is missing"
+    exit 1
+}
+/usr/bin/cmp "$repo_root/LICENSE" "$verified_bundle/Contents/Resources/LICENSE.txt"
 
 signing_mode_file="$evidence/signing-mode.txt"
 signing_identity_file="$evidence/signing-identity.txt"
@@ -195,8 +215,29 @@ bundle_id=$(/usr/bin/plutil -extract CFBundleIdentifier raw "$verified_bundle/Co
 }
 short_version=$(/usr/bin/plutil -extract CFBundleShortVersionString raw "$verified_bundle/Contents/Info.plist")
 bundle_version=$(/usr/bin/plutil -extract CFBundleVersion raw "$verified_bundle/Contents/Info.plist")
-[[ "$short_version" == "1.6.0-safe.12" && "$bundle_version" == "12" ]] || {
+[[ "$short_version" == "$safe_version" && "$bundle_version" == "$safe_build" ]] || {
     print -u2 "unexpected safe bundle version: $short_version ($bundle_version)"
+    exit 1
+}
+display_name=$(/usr/bin/plutil -extract CFBundleDisplayName raw "$verified_bundle/Contents/Info.plist")
+minimum_system=$(/usr/bin/plutil -extract LSMinimumSystemVersion raw "$verified_bundle/Contents/Info.plist")
+copyright=$(/usr/bin/plutil -extract NSHumanReadableCopyright raw "$verified_bundle/Contents/Info.plist")
+icon_file=$(/usr/bin/plutil -extract CFBundleIconFile raw "$verified_bundle/Contents/Info.plist")
+expected_copyright='Copyright (c) 2026 Vinz. Codenotch Safe modifications distributed under the MIT License.'
+[[ "$display_name" == "$safe_app_name" ]] || {
+    print -u2 "unexpected safe app name: $display_name"
+    exit 1
+}
+[[ "$minimum_system" == "15.0" ]] || {
+    print -u2 "unexpected minimum macOS version: $minimum_system"
+    exit 1
+}
+[[ "$copyright" == "$expected_copyright" ]] || {
+    print -u2 "unexpected safe copyright: $copyright"
+    exit 1
+}
+[[ "$icon_file" == "AppIcon.icns" ]] || {
+    print -u2 "unexpected safe app icon: $icon_file"
     exit 1
 }
 
