@@ -10,7 +10,7 @@
 
 Codenotch Safe currently builds an audited, Apple-Silicon-only application with either a local certificate or an ad-hoc signature. That is sufficient for a single audited Mac, but it is not a convenient team distribution: the CI artifact is a ZIP, it is not a GitHub Release, there is no Homebrew cask, the system Settings command opens an empty window, and the current author credit does not explain the relationship between Codenotch and the Safe fork.
 
-The organization does not have an Apple Developer Program membership. The release therefore cannot use a Developer ID certificate or Apple notarization. macOS Gatekeeper will require each user to approve the first launch manually. The release must explain that step and must not clear quarantine, alter Gatekeeper, or conceal the missing notarization.
+The organization does not have an Apple Developer Program membership. The release therefore cannot use a Developer ID certificate or Apple notarization. Direct DMG installs require each user to approve the first launch manually. For the team Homebrew path, the cask may remove `com.apple.quarantine` only from the installed application after verifying the pinned release checksum. The release must disclose this behavior and must not change global Gatekeeper settings or conceal the missing notarization.
 
 The upstream project is Codenotch by Vinz. It uses the MIT License, which permits internal and public redistribution and modification provided that the copyright and license notice remain with copies or substantial portions of the software.
 
@@ -27,7 +27,7 @@ The upstream project is Codenotch by Vinz. It uses the MIT License, which permit
 ## Non-goals
 
 - Apple Developer ID signing or notarization without an organization-owned Apple Developer account.
-- Automatic removal of the quarantine attribute or disabling Gatekeeper.
+- Disabling Gatekeeper globally or clearing quarantine from anything except the installed Codenotch Safe bundle.
 - Restoring Sparkle or any other in-app updater.
 - Publishing to the Mac App Store or the official `homebrew/cask` repository.
 - Adding providers beyond Claude, Cursor, and Codex.
@@ -37,7 +37,7 @@ The upstream project is Codenotch by Vinz. It uses the MIT License, which permit
 
 The release will use an ad-hoc signed universal application packaged in a DMG and published as a GitHub Release. A separate public Homebrew tap will contain a cask that downloads the same immutable DMG and verifies its SHA-256 checksum.
 
-This approach provides a direct download and a one-command installation while keeping the security limitation visible. Both installation paths end with the same application bits. The first launch instructions tell the user to use macOS's supported **Open Anyway** flow in System Settings. No installer script runs `xattr`, changes `spctl`, or disables a system security setting.
+This approach provides a direct download and a one-command installation while keeping the security limitation visible. Both installation paths end with the same application bits. Direct DMG installation uses macOS's supported **Open Anyway** flow. The Homebrew cask verifies the exact SHA-256 and then runs `/usr/bin/xattr -dr com.apple.quarantine` against only `{{appdir}}/Codenotch Safe.app`. It does not change `spctl` or any global security setting.
 
 The two rejected approaches are:
 
@@ -147,9 +147,9 @@ The canonical tap is a separate public repository named `x950827/homebrew-tap`. 
 - the project homepage and description;
 - the macOS dependency and supported architecture information;
 - `app "Codenotch Safe.app"`;
-- a caveat describing the one-time Open Anyway step.
+- a caveat disclosing the app-scoped quarantine removal and checksum verification.
 
-It must not use `sha256 :no_check`, disable Homebrew quarantine, run an installer script, or execute a postflight command. Installation is:
+It must not use `sha256 :no_check`, run an installer script, alter `spctl`, or remove quarantine from any path other than `{{appdir}}/Codenotch Safe.app`. Its declarative postflight step must use `/usr/bin/xattr` without `sudo`. Installation is:
 
 ```sh
 brew install --cask x950827/tap/codenotch-safe
@@ -163,7 +163,7 @@ The first release prepares and audits the tap locally. Creating the external rep
 - If the DMG hash differs from the cask hash, Homebrew refuses installation.
 - If a release asset already exists, the workflow fails rather than replacing published bytes under the same version.
 - If GitHub Release publication succeeds but the tap update fails, direct download remains valid and the Brew instructions stay unpublished until the exact cask is available.
-- If Gatekeeper blocks the first launch, documentation points only to Apple's Open Anyway UI. It does not recommend disabling Gatekeeper globally.
+- If Gatekeeper blocks a direct-DMG first launch, documentation points to Apple's Open Anyway UI. Homebrew installation discloses its app-scoped quarantine removal. Neither path recommends disabling Gatekeeper globally.
 - If a provider is unavailable or not installed, its row explains that state without requesting a password.
 
 ## Testing and acceptance criteria
@@ -179,7 +179,7 @@ The implementation is complete when all of the following are demonstrated:
 7. `codesign --verify --deep --strict` passes for the packaged application.
 8. The verifier records and checks the DMG SHA-256.
 9. The cask passes `brew style` and `brew audit --cask` against the final release URL and checksum.
-10. On a clean macOS account, direct-download and Homebrew installs both place the same application in Applications, show the documented Gatekeeper flow once, and then launch normally.
+10. On a clean macOS account, direct-download and Homebrew installs both place the same application in Applications; the DMG path shows the documented Gatekeeper flow, while the cask path clears only the installed app's quarantine attribute and launches normally.
 11. A Safe.12 installation retains its provider choices and display settings after replacing the app with Safe.13.
 
 ## Release boundary

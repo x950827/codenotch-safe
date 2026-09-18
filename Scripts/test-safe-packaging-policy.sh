@@ -65,7 +65,12 @@ cask="$repo_root/build/homebrew-tap/Casks/codenotch-safe.rb"
 /usr/bin/grep -Fq 'app "Codenotch Safe.app"' "$cask"
 /usr/bin/grep -Fq \
     'https://github.com/x950827/codenotch-safe/releases/download/v#{version}' "$cask"
-if /usr/bin/grep -Eq 'sha256 :no_check|quarantine|postflight|installer ' "$cask"; then
+/usr/bin/grep -Fq 'postflight_steps do' "$cask"
+/usr/bin/grep -Fq 'run "/usr/bin/xattr"' "$cask"
+/usr/bin/grep -Fq \
+    'args: ["-dr", "com.apple.quarantine", "{{appdir}}/Codenotch Safe.app"]' "$cask"
+/usr/bin/grep -Fq 'sudo: false' "$cask"
+if /usr/bin/grep -Eq 'sha256 :no_check|spctl|installer ' "$cask"; then
     print -u2 "rendered cask weakens release policy"
     exit 1
 fi
