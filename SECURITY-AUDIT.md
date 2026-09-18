@@ -1,5 +1,13 @@
 # Codenotch Safe: local security audit
 
+## Safe.14 Claude cache validity update — 2026-09-18
+
+Safe.14 keeps the Safe.13 credential, destination, and distribution boundaries. It changes Claude cache parsing so an expired five-hour window is rejected instead of being archived again as a fresh reading. This removes stale percentages and the persistent `Resetting…` label after the stored reset time has passed.
+
+The regression test supplies an expired session window alongside a still-valid weekly window and verifies that the cache is rejected. Local type checking and the full `safe-verify` policy suite passed. A local launch after clearing the old application showed that the expired Claude reading was no longer present in `lastGoodReadings`.
+
+Claude live limits remain available only when Claude Code supplies a fresh normalized status-line record or its built-in `/usage` command returns current windows. If neither source does, Codenotch Safe reports Claude usage as unavailable. It does not add Keychain, bearer-token, or direct Anthropic API access to fill that gap.
+
 ## Safe.13 distribution update — 2026-09-17
 
 Safe.13 keeps the Safe.12 credential and destination boundaries and adds team distribution controls:
