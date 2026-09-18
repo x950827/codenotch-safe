@@ -271,6 +271,12 @@ final class SecurityBoundaryTests: XCTestCase {
         XCTAssertThrowsError(try SafeClaudeUsageCache.parse(Data(malformed.utf8)))
     }
 
+    func testClaudeCacheRejectsAnExpiredSessionWindow() {
+        let expired = #"{"cachedUsageUtilization":{"fetchedAtMs":946684800000,"utilization":{"five_hour":{"utilization":12,"resets_at":"2000-01-01T00:00:00Z"},"seven_day":{"utilization":16,"resets_at":"2100-01-01T00:00:00Z"}}}}"#
+
+        XCTAssertThrowsError(try SafeClaudeUsageCache.parse(Data(expired.utf8)))
+    }
+
     func testClaudeStatusLineCaptureKeepsOnlyNormalizedRateLimits() throws {
         let input = #"""
         {

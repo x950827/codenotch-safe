@@ -32,11 +32,11 @@ struct SafeClaudeUsageCache: Sendable {
         self.data = data
     }
 
-    func read() throws -> Reading {
-        try Self.parse(data())
+    func read(now: Date = Date()) throws -> Reading {
+        try Self.parse(data(), now: now)
     }
 
-    static func parse(_ data: Data) throws -> Reading {
+    static func parse(_ data: Data, now: Date = Date()) throws -> Reading {
         let document = try JSONDecoder().decode(Document.self, from: data)
         guard let cache = document.cachedUsageUtilization,
               let fetchedAtMs = cache.fetchedAtMs,
@@ -56,11 +56,13 @@ struct SafeClaudeUsageCache: Sendable {
                   percent.isFinite,
                   percent >= 0
             else { return nil }
+            let resetsAt = entry?.resetsAt.flatMap(resetDate)
+            if kind == "session", let resetsAt, resetsAt <= now { return nil }
             return LimitWindow(
                 id: kind,
                 label: ClaudeUsageLabels.label(forKind: kind),
                 usedFraction: percent / 100,
-                resetsAt: entry?.resetsAt.flatMap(resetDate)
+                resetsAt: resetsAt
             )
         }.sorted(by: ClaudeUsageLabels.displayOrder)
 
