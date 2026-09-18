@@ -61,7 +61,7 @@ renderer="$script_dir/render-homebrew-cask.sh"
 "$renderer"
 cask="$repo_root/build/homebrew-tap/Casks/codenotch-safe.rb"
 [[ -f "$cask" ]]
-/usr/bin/grep -Fq 'version "1.6.0-safe.13"' "$cask"
+/usr/bin/grep -Fq 'version "1.6.0-safe.14"' "$cask"
 /usr/bin/grep -Fq 'app "Codenotch Safe.app"' "$cask"
 /usr/bin/grep -Fq \
     'https://github.com/x950827/codenotch-safe/releases/download/v#{version}' "$cask"

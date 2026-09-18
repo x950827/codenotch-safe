@@ -4,7 +4,7 @@ Codenotch Safe is an audited macOS usage monitor for Claude Code, Cursor, and Co
 
 ## Install
 
-Download `Codenotch-Safe-1.6.0-safe.13-universal.dmg` from the [GitHub Releases page](https://github.com/x950827/codenotch-safe/releases), or install the checksum-pinned Homebrew Cask:
+Download `Codenotch-Safe-1.6.0-safe.14-universal.dmg` from the [GitHub Releases page](https://github.com/x950827/codenotch-safe/releases), or install the checksum-pinned Homebrew Cask:
 
 ```sh
 brew install --cask x950827/tap/codenotch-safe
@@ -20,7 +20,7 @@ Open **Settings → Accounts** and switch off tools you do not use. A disabled p
 
 Safe keeps only these integrations:
 
-- Claude limits from local Claude Code status-line data and the installed Claude CLI, without Keychain or bearer-token reads.
+- Claude limits from fresh local Claude Code status-line data and the installed Claude CLI, without Keychain or bearer-token reads. If neither source returns current limits, the app shows them as unavailable instead of retaining an expired percentage.
 - Codex limits from its local app server, without bearer-token reads.
 - Cursor limits from its local editor state and `https://cursor.com/api/usage-summary`, only while Cursor is enabled.
 
