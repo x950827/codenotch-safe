@@ -701,11 +701,11 @@ final class SafeDisclosureTests: XCTestCase {
         XCTAssertEqual(windows.map(\.label), ["5h limit", "Weekly limit", "Monthly limit"])
         XCTAssertEqual(windows.map(\.usedFraction), [0.13, 0.42, 0.07])
         XCTAssertEqual(windows[0].resetsAt,
-                       Date(timeIntervalSince1970: 1_894_566_600.250))
+                       Date(timeIntervalSince1970: 1_894_710_600.250))
         XCTAssertEqual(windows[1].resetsAt,
-                       Date(timeIntervalSince1970: 1_898_937_600))
+                       Date(timeIntervalSince1970: 1_894_924_800))
         XCTAssertEqual(windows[2].resetsAt,
-                       Date(timeIntervalSince1970: 1_924_165_785))
+                       Date(timeIntervalSince1970: 1_896_354_585))
     }
 
     func testOpenCodeUsageParserRejectsShapeChanges() {

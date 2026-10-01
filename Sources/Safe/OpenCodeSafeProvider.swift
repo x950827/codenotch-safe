@@ -116,6 +116,12 @@ actor OpenCodeSafeProvider: UsageProvider {
             // if the status code looks healthy.
             throw OpenCodeBoundaryError.invalidEndpoint
         }
+        // The production session uses `RedirectRejectingSessionDelegate` to
+        // cancel redirects; if a 3xx still surfaces here the server is not
+        // playing along with the allowlist, so reject it the same way.
+        if (300..<400).contains(status) {
+            throw OpenCodeBoundaryError.invalidEndpoint
+        }
 
         Log.usage.debug("opencode: status \(status)")
 

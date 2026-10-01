@@ -123,7 +123,7 @@ private final class StubbedProtocol: URLProtocol, @unchecked Sendable {
         case .status(let code, let headers, let body):
             respond(status: code, headers: headers, body: body)
         case .redirected(let target):
-            guard let redirectURL = URL(string: target) else {
+            guard URL(string: target) != nil else {
                 client.urlProtocol(self, didFailWithError: URLError(.badURL))
                 return
             }
@@ -131,22 +131,10 @@ private final class StubbedProtocol: URLProtocol, @unchecked Sendable {
                 url: request.url ?? OpenCodeEndpoint.url,
                 statusCode: 302,
                 httpVersion: "HTTP/1.1",
-                headerFields: ["Location": redirectURL.absoluteString]
+                headerFields: ["Location": target]
             ) ?? HTTPURLResponse()
             client.urlProtocol(self, didReceive: response,
                                cacheStoragePolicy: .notAllowed)
-            // Followed by a 200 on the redirect target so the test sees the
-            // post-redirect body unless it inspects the response URL.
-            let body = "{\"usage\":{}}"
-            let final = HTTPURLResponse(
-                url: redirectURL,
-                statusCode: 200,
-                httpVersion: "HTTP/1.1",
-                headerFields: ["Content-Type": "application/json"]
-            ) ?? HTTPURLResponse()
-            client.urlProtocol(self, didReceive: final,
-                               cacheStoragePolicy: .notAllowed)
-            client.urlProtocol(self, didLoad: Data(body.utf8))
         }
         client.urlProtocolDidFinishLoading(self)
     }
