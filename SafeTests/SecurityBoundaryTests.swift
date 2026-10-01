@@ -1026,7 +1026,7 @@ final class SafeDisclosureTests: XCTestCase {
         }
     }
 
-    func testOpenCodeSafeProviderDoesNotMutateTheCredentialsFile() throws {
+    func testOpenCodeSafeProviderDoesNotMutateTheCredentialsFile() async throws {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("opencode-auth-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
