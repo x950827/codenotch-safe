@@ -1,10 +1,10 @@
 # Codenotch Safe
 
-Codenotch Safe is an audited macOS usage monitor for Claude Code, Cursor, and Codex. It is based on [Codenotch by Vinz](https://github.com/vinzdg/codenotch) and distributed under the [MIT License](LICENSE).
+Codenotch Safe is an audited macOS usage monitor for Claude Code, Cursor, Codex, and OpenCode Go. It is based on [Codenotch by Vinz](https://github.com/vinzdg/codenotch) and distributed under the [MIT License](LICENSE).
 
 ## Install
 
-Download `Codenotch-Safe-1.6.0-safe.14-universal.dmg` from the [GitHub Releases page](https://github.com/x950827/codenotch-safe/releases), or install the checksum-pinned Homebrew Cask:
+Download `Codenotch-Safe-1.6.0-safe.15-universal.dmg` from the [GitHub Releases page](https://github.com/x950827/codenotch-safe/releases), or install the checksum-pinned Homebrew Cask:
 
 ```sh
 brew install --cask x950827/tap/codenotch-safe

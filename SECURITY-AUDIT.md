@@ -1,5 +1,58 @@
 # Codenotch Safe: local security audit
 
+## Safe.15 OpenCode Go subscription check — 2026-10-01
+
+Safe.15 keeps the Safe.14 credential and destination boundaries and adds one
+new audited provider:
+
+- `OpenCodeSafeProvider` reads only the `opencode-go` entry from
+  `~/.local/share/opencode/auth.json` and makes a single `GET` to
+  `https://opencode.ai/zen/go/v1/usage` with `Authorization: Bearer` and
+  `Accept: application/json` as the only headers. The session is ephemeral
+  (no cookie storage, no URL credential storage, no response cache), the
+  request rejects every redirect to a non-audited host, and the response URL
+  is re-validated against the exact allowlist.
+- `Sources/Providers/OpenCodeCredentials.swift` and
+  `Sources/Providers/OpenCodeUsage.swift` are added to the
+  `project.yml` source allowlist and to `Scripts/safe-source-list.sh`. The
+  upstream `Sources/Providers/OpenCodeProvider.swift` remains in the
+  repository for upstream traceability but is excluded from the safe target
+  (it uses `URLSession.shared`, which has a cookie jar and follows
+  redirects).
+- `Scripts/verify-safe-local.sh` no longer treats `opencode.ai` as a
+  forbidden destination string and lists the new allowed endpoint alongside
+  `https://cursor.com/api/usage-summary`.
+- 401 maps to `needsAuth` (a valid key with no Go plan answers 401, the same
+  as a bad key — both mean "nothing readable here"), 403 maps to
+  `nothingMetered` (a valid key without a Go subscription is metering
+  nothing, which is not an error), and 429 backs off on a 60-second floor
+  that doubles per consecutive limit and caps at 15 minutes. The deadline is
+  persisted through `UsageArchive` so it survives a relaunch, matching the
+  bargain Claude's backoff makes.
+- `OpenCodeUsageTests`, `testSafeChangesNameEveryAuditedBoundary`,
+  `testSafeDisclosureTests`, and the new parser, credentials, endpoint,
+  backoff, and provider tests pin the boundary.
+
+Local verification:
+
+```text
+zsh Scripts/test-safe-release-metadata.sh
+CODENOTCH_SIGNING_IDENTITY=- make safe-verify
+zsh Scripts/test-safe-packaging-policy.sh
+zsh Scripts/test-safe-release-workflow.sh
+ruby -c build/homebrew-tap/Casks/codenotch-safe.rb
+```
+
+Local `make test-ci` remains pending because this Mac intentionally has
+Command Line Tools without the full Xcode application; the same XCTest
+command is mandatory in CI before release publication.
+
+- Safe.15 audit date: 2026-10-01
+- Upstream base: `vinzdg/codenotch` at `6482ce0`
+- Audited implementation commit: _pending before release_
+- Bundle identifier: `local.audited.codenotch`
+- Bundle version: `1.6.0-safe.15`
+
 ## Safe.14 Claude cache validity update — 2026-09-18
 
 Safe.14 keeps the Safe.13 credential, destination, and distribution boundaries. It changes Claude cache parsing so an expired five-hour window is rejected instead of being archived again as a fresh reading. This removes stale percentages and the persistent `Resetting…` label after the stored reset time has passed.
@@ -69,6 +122,7 @@ network, CPU, and RSS evidence remains the safe.7 run below.
 | Claude | Reads the default Claude Code profile's local account label and session-status files. A bundled status-line bridge retains only normalized rate-limit fields. Codenotch does not read Claude's Keychain or OAuth token. | Prefers the bridge record, then runs the restricted `claude --print ... /usage` command. The installed first-party Claude CLI performs its own usage request; there is no Codenotch-owned Claude network request. | Only normalized percentages and reset times from the bridge, CLI, or dated local cache are retained. Raw status-line input and CLI output are never archived or logged. |
 | Cursor | Opens Cursor's editor SQLite store read-only and reads the two values needed to form Cursor's session cookie. Activity comes from `composerHeaders` in the same store. | One `GET` to exactly `https://cursor.com/api/usage-summary`; redirects are rejected. | The session is ephemeral: no cookie jar, credential store, URL cache, response body log, or token persistence. Normalized usage is archived. |
 | Codex | Reads local activity metadata. Codenotch does not read `auth.json` or a bearer token. | Starts the installed `codex app-server` and sends a fixed three-message JSONL exchange: `initialize`, `initialized`, and `account/rateLimits/read`. | Only normalized primary/secondary windows are archived. Other app-server messages are ignored. |
+| OpenCode | Reads only the `opencode-go` entry from `~/.local/share/opencode/auth.json` on every refresh; other entries (`openai`, `deepseek`, …) are ignored and the file is never written. Codenotch does not read OpenCode's Keychain. | One `GET` to exactly `https://opencode.ai/zen/go/v1/usage` with `Authorization: Bearer <opencode-go key>` and `Accept: application/json` as the only headers; redirects are rejected and the response URL is re-validated against the exact allowlist. | The session is ephemeral (no cookie jar, credential store, URL cache). Only normalized `rolling`, `weekly`, and `monthly` windows are archived; the raw response body and bearer token are never logged. Rate-limit deadlines are persisted so the next attempt waits rather than walking back into the limit. |
 
 Anthropic documents `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` as disabling
 auto-updates, telemetry, error reporting, release notes, availability checks,
@@ -91,7 +145,9 @@ unset and uses the documented individual `DISABLE_AUTOUPDATER`,
   but are absent from the target and local safe build.
 - Static binary URL extraction includes only these app-owned requests:
   - `https://cursor.com/api/usage-summary` (the app-owned request)
+  - `https://opencode.ai/zen/go/v1/usage` (the app-owned request)
   - `https://cursor.com/dashboard` (user-opened account link)
+  - `https://opencode.ai` (user-opened account link)
   - `https://claude.ai/settings/usage` (user-opened account link)
 - Undefined-symbol inspection finds no `SecItemCopyMatching`, `SecItemAdd`,
   `SecItemUpdate`, or `SecItemDelete` in either binary. The status-line helper
