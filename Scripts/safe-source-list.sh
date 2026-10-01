@@ -13,6 +13,8 @@ for path in Sources/**/*.swift(.N); do
         Sources/Providers/CodexUsage.swift|\
         Sources/Providers/CursorUsage.swift|\
         Sources/Providers/GlyphOutline.swift|\
+        Sources/Providers/OpenCodeCredentials.swift|\
+        Sources/Providers/OpenCodeUsage.swift|\
         Sources/Providers/ProviderAccount.swift|\
         Sources/Providers/ProviderGlyph.swift|\
         Sources/Providers/SQLiteStore.swift|\

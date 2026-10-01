@@ -23,6 +23,7 @@ Safe keeps only these integrations:
 - Claude limits from fresh local Claude Code status-line data and the installed Claude CLI, without Keychain or bearer-token reads. If neither source returns current limits, the app shows them as unavailable instead of retaining an expired percentage.
 - Codex limits from its local app server, without bearer-token reads.
 - Cursor limits from its local editor state and `https://cursor.com/api/usage-summary`, only while Cursor is enabled.
+- OpenCode Go limits from the `opencode-go` key in `~/.local/share/opencode/auth.json` and `https://opencode.ai/zen/go/v1/usage`, only while OpenCode is enabled.
 
 The Safe build contains no embedded web view, analytics, automatic updater, or other provider endpoints. See the [security audit](SECURITY-AUDIT.md) for the checked source and runtime boundaries.
 

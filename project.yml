@@ -37,6 +37,8 @@ targets:
       - path: Sources/Providers/CodexUsage.swift
       - path: Sources/Providers/CursorUsage.swift
       - path: Sources/Providers/GlyphOutline.swift
+      - path: Sources/Providers/OpenCodeCredentials.swift
+      - path: Sources/Providers/OpenCodeUsage.swift
       - path: Sources/Providers/ProviderAccount.swift
       - path: Sources/Providers/ProviderGlyph.swift
       - path: Sources/Providers/SQLiteStore.swift

@@ -65,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // rendered list already has the user's order and enabled set.
         let safeProviders: [any UsageProvider] = claudeProfiles.map {
             ClaudeCLIOnlyProvider(profile: $0)
-        } + [CursorSafeProvider(), CodexAppServerProvider()]
+        } + [CursorSafeProvider(), CodexAppServerProvider(), OpenCodeSafeProvider()]
         let store = UsageStore(
                 providers: safeProviders,
                 refreshInterval: 5 * 60,

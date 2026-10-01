@@ -659,6 +659,369 @@ final class SafeDisclosureTests: XCTestCase {
         XCTAssertTrue(text.contains("copies or substantial portions"))
     }
 
+    // MARK: - OpenCode Go boundary
+
+    /// The recorded response shape — pinned here so a change in OpenCode's
+    /// endpoint either gets re-pinned deliberately or fails the boundary test.
+    private static let openCodeRecordedJSON = """
+    {"usage":{
+      "rolling":{"status":"ok","percent":13,"resetsAt":"2030-01-15T12:30:00.250Z"},
+      "weekly": {"status":"ok","percent":42,"resetsAt":"2030-01-18T00:00:00Z"},
+      "monthly":{"status":"ok","percent":7, "resetsAt":"2030-02-03T13:09:45Z"}}}
+    """
+
+    func testOpenCodeUsageParserPinsTheRecordedShape() throws {
+        let now = Date(timeIntervalSince1970: 1_893_456_000)
+        let windows = try OpenCodeUsage.windows(
+            fromJSON: Self.openCodeRecordedJSON,
+            now: now
+        )
+
+        XCTAssertEqual(windows.map(\.id), ["rolling", "weekly", "monthly"])
+        XCTAssertEqual(windows.map(\.label), ["5h limit", "Weekly limit", "Monthly limit"])
+        XCTAssertEqual(windows.map(\.usedFraction), [0.13, 0.42, 0.07])
+        XCTAssertEqual(windows[0].resetsAt,
+                       Date(timeIntervalSince1970: 1_894_566_600.250))
+        XCTAssertEqual(windows[1].resetsAt,
+                       Date(timeIntervalSince1970: 1_898_937_600))
+        XCTAssertEqual(windows[2].resetsAt,
+                       Date(timeIntervalSince1970: 1_924_165_785))
+    }
+
+    func testOpenCodeUsageParserRejectsShapeChanges() {
+        XCTAssertThrowsError(try OpenCodeUsage.windows(
+            fromJSON: #"{"usage":{"rolling":{"status":"ok","percent":"13"}}}"#
+        ))
+        XCTAssertThrowsError(try OpenCodeUsage.windows(
+            fromJSON: #"{"usage":{"rolling":{"status":"ok","resetsAt":"2030-01-15T12:30:00Z"}}}"#
+        ))
+        XCTAssertThrowsError(try OpenCodeUsage.windows(
+            fromJSON: #"{"usage":{}}"#
+        ))
+    }
+
+    func testOpenCodeUsageHeadlineIsTheRollingWindow() throws {
+        let windows = try OpenCodeUsage.windows(fromJSON: Self.openCodeRecordedJSON)
+        XCTAssertEqual(windows.map(\.id).first, "rolling")
+    }
+
+    func testOpenCodeCredentialsReadOnlyOpenCodeGoEntryObjectShape() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("opencode-auth-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(#"{"opencode-go":{"type":"api","key":"sk-go-live"}}"#.utf8).write(to: url)
+
+        let credential = try XCTUnwrap(OpenCodeCredentials.load(from: url))
+
+        XCTAssertEqual(credential.token, "sk-go-live")
+    }
+
+    func testOpenCodeCredentialsAcceptTheBareStringShape() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("opencode-auth-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(#"{"opencode-go":"sk-go-live"}"#.utf8).write(to: url)
+
+        XCTAssertEqual(try XCTUnwrap(OpenCodeCredentials.load(from: url)).token,
+                       "sk-go-live")
+    }
+
+    func testOpenCodeCredentialsRejectEmptyKeyAndIgnoreOtherEntries() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("opencode-auth-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        // Empty `opencode-go` and live `openai`/`deepseek` entries — only the
+        // opencode-go slot decides what the provider reads.
+        try Data(
+            #"{"opencode-go":{"type":"api","key":""},"openai":{"type":"oauth","access":"oa"},"deepseek":{"type":"api","key":"sk-deepseek"}}"#
+                .utf8
+        ).write(to: url)
+
+        XCTAssertNil(OpenCodeCredentials.load(from: url))
+    }
+
+    func testOpenCodeCredentialsReturnNilWhenFileMissingOrUnreadable() {
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("opencode-missing-\(UUID().uuidString).json")
+
+        XCTAssertNil(OpenCodeCredentials.load(from: missing))
+    }
+
+    func testOpenCodeEndpointIsExactAndHasOnlyRequiredHeaders() throws {
+        let request = try OpenCodeEndpoint.makeRequest(token: "sk-go-live")
+
+        XCTAssertEqual(request.url?.absoluteString, "https://opencode.ai/zen/go/v1/usage")
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"),
+                       "Bearer sk-go-live")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
+        XCTAssertEqual(Set(request.allHTTPHeaderFields?.keys.map { $0 } ?? []),
+                       ["Authorization", "Accept"])
+        XCTAssertFalse(request.httpShouldHandleCookies)
+    }
+
+    func testOpenCodeEndpointRejectsEveryOriginOrPathChange() {
+        let altered = [
+            "http://opencode.ai/zen/go/v1/usage",
+            "https://evil.example/zen/go/v1/usage",
+            "https://opencode.ai:444/zen/go/v1/usage",
+            "https://opencode.ai/zen/go/v1/usage/extra",
+            "https://opencode.ai/zen/go/v1/usage?redirect=https://evil.example",
+            "https://opencode.ai/zen/go/v1/usage#fragment",
+            "https://user:pass@opencode.ai/zen/go/v1/usage",
+        ]
+
+        for value in altered {
+            XCTAssertThrowsError(
+                try OpenCodeEndpoint.makeRequest(
+                    token: "sk-go-live",
+                    target: XCTUnwrap(URL(string: value))
+                ),
+                value
+            )
+        }
+    }
+
+    func testOpenCodeEndpointRejectsMalformedTokens() {
+        XCTAssertThrowsError(try OpenCodeEndpoint.makeRequest(token: ""))
+        XCTAssertThrowsError(try OpenCodeEndpoint.makeRequest(token: "line1\rline2"))
+        XCTAssertThrowsError(try OpenCodeEndpoint.makeRequest(token: "line1\nline2"))
+    }
+
+    func testOpenCodeSessionKeepsNothingPersistent() {
+        let configuration = OpenCodeEndpoint.makeConfiguration()
+
+        XCTAssertNil(configuration.httpCookieStorage)
+        XCTAssertNil(configuration.urlCredentialStorage)
+        XCTAssertNil(configuration.urlCache)
+        XCTAssertFalse(configuration.httpShouldSetCookies)
+        XCTAssertEqual(configuration.requestCachePolicy, .reloadIgnoringLocalCacheData)
+        XCTAssertEqual(configuration.httpCookieAcceptPolicy, .never)
+    }
+
+    func testOpenCodeBackoffKeepsASixtySecondFloor() {
+        XCTAssertEqual(OpenCodeEndpoint.backoff(forAttempt: 0, retryAfter: nil), 60,
+                       accuracy: 0.0001)
+        XCTAssertEqual(OpenCodeEndpoint.backoff(forAttempt: 1, retryAfter: nil), 120,
+                       accuracy: 0.0001)
+        XCTAssertEqual(OpenCodeEndpoint.backoff(forAttempt: 2, retryAfter: nil), 240,
+                       accuracy: 0.0001)
+        XCTAssertEqual(OpenCodeEndpoint.backoff(forAttempt: 3, retryAfter: nil), 480,
+                       accuracy: 0.0001)
+        XCTAssertEqual(OpenCodeEndpoint.backoff(forAttempt: 4, retryAfter: nil), 900,
+                       accuracy: 0.0001)
+        XCTAssertEqual(OpenCodeEndpoint.backoff(forAttempt: 99, retryAfter: nil), 900,
+                       accuracy: 0.0001)
+    }
+
+    func testOpenCodeBackoffHonoursRetryAfterOnlyAsAFloorRaiser() {
+        // A short hint is ignored — the 60s floor prevents walking straight
+        // back into the limit it was just told to back off from.
+        XCTAssertEqual(OpenCodeEndpoint.backoff(forAttempt: 0, retryAfter: 5), 60,
+                       accuracy: 0.0001)
+        // A long hint is honoured.
+        XCTAssertEqual(OpenCodeEndpoint.backoff(forAttempt: 0, retryAfter: 180), 180,
+                       accuracy: 0.0001)
+    }
+
+    func testOpenCodeRetryAfterParsesSecondsAndHTTPDate() {
+        let secondsHeader = HTTPURLResponse(
+            url: OpenCodeEndpoint.url,
+            statusCode: 429,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Retry-After": "42"]
+        )
+        XCTAssertEqual(OpenCodeEndpoint.retryAfter(from: secondsHeader), 42,
+                       accuracy: 0.0001)
+
+        let future = Date().addingTimeInterval(300)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "GMT")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        let dateHeader = HTTPURLResponse(
+            url: OpenCodeEndpoint.url,
+            statusCode: 429,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Retry-After": formatter.string(from: future)]
+        )
+        let parsed = try? XCTUnwrap(OpenCodeEndpoint.retryAfter(from: dateHeader))
+        XCTAssertEqual(parsed ?? 0, future.timeIntervalSinceNow, accuracy: 1.0)
+
+        XCTAssertNil(OpenCodeEndpoint.retryAfter(from: nil))
+        let malformed = HTTPURLResponse(
+            url: OpenCodeEndpoint.url,
+            statusCode: 429,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Retry-After": "not-a-number"]
+        )
+        XCTAssertNil(OpenCodeEndpoint.retryAfter(from: malformed))
+    }
+
+    @MainActor
+    func testOpenCodeSafeProviderUsesOnlyTheAuditedEndpoint() async throws {
+        // 200 on the exact endpoint.
+        let success = OpenCodeSafeProvider(
+            session: OpenCodeEndpoint.makeStubbedSession { request in
+                XCTAssertEqual(request.url?.absoluteString,
+                               "https://opencode.ai/zen/go/v1/usage")
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"),
+                               "Bearer sk-go-live")
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"),
+                               "application/json")
+                return .success(body: Self.openCodeRecordedJSON)
+            },
+            loadCredentials: { OpenCodeCredentials.Credential(token: "sk-go-live") }
+        )
+
+        let snapshot = try await success.fetchSnapshot()
+        XCTAssertEqual(snapshot.id, "opencode")
+        XCTAssertEqual(snapshot.windows.map(\.id), ["rolling", "weekly", "monthly"])
+        XCTAssertEqual(snapshot.windows.first?.usedFraction, 0.13)
+        XCTAssertEqual(snapshot.headlineID, "rolling")
+        XCTAssertEqual(snapshot.fidelity, .official)
+    }
+
+    func testOpenCodeSafeProviderMapsMissingKeyToNeedsAuth() async {
+        let provider = OpenCodeSafeProvider(
+            session: OpenCodeEndpoint.makeStubbedSession { _ in
+                .success(body: Self.openCodeRecordedJSON)
+            },
+            loadCredentials: { throw UsageProviderError.needsAuth }
+        )
+
+        XCTAssertThrowsError(try await provider.fetchSnapshot()) { error in
+            guard case UsageProviderError.needsAuth = error else {
+                return XCTFail("expected needsAuth, got \(error)")
+            }
+        }
+    }
+
+    func testOpenCodeSafeProviderMaps401ToNeedsAuth() async {
+        let provider = OpenCodeSafeProvider(
+            session: OpenCodeEndpoint.makeStubbedSession { _ in
+                .status(401, headers: [:], body: "")
+            },
+            loadCredentials: { OpenCodeCredentials.Credential(token: "sk-go-live") }
+        )
+
+        do {
+            _ = try await provider.fetchSnapshot()
+            XCTFail("401 must surface as needsAuth")
+        } catch UsageProviderError.needsAuth {
+            // Expected: a key without a Go plan answers 401, the same as a
+            // bad key. Both read as "nothing readable here".
+        } catch {
+            XCTFail("expected needsAuth, got \(error)")
+        }
+    }
+
+    func testOpenCodeSafeProviderMaps403ToNothingMetered() async {
+        let provider = OpenCodeSafeProvider(
+            session: OpenCodeEndpoint.makeStubbedSession { _ in
+                .status(403, headers: [:], body: "")
+            },
+            loadCredentials: { OpenCodeCredentials.Credential(token: "sk-go-live") }
+        )
+
+        do {
+            _ = try await provider.fetchSnapshot()
+            XCTFail("403 must surface as nothingMetered")
+        } catch UsageProviderError.nothingMetered {
+            // Expected: the key is valid, the plan is not Go — that is
+            // metering nothing, not an error.
+        } catch {
+            XCTFail("expected nothingMetered, got \(error)")
+        }
+    }
+
+    func testOpenCodeSafeProviderRecordsPersistentBackoffOn429() async throws {
+        let defaults = UserDefaults(suiteName: "OpenCodeSafeProviderTests.\(UUID().uuidString)")!
+        defer { defaults.removePersistentDomain(forName: "OpenCodeSafeProviderTests") }
+        let archive = UsageArchive(defaults: defaults)
+
+        let provider = OpenCodeSafeProvider(
+            session: OpenCodeEndpoint.makeStubbedSession { _ in
+                .status(429, headers: ["Retry-After": "0"], body: "")
+            },
+            loadCredentials: { OpenCodeCredentials.Credential(token: "sk-go-live") },
+            archive: archive
+        )
+
+        do {
+            _ = try await provider.fetchSnapshot()
+            XCTFail("429 must surface as rateLimited")
+        } catch UsageProviderError.rateLimited(let retryAfter) {
+            // The server's hint is honoured only as a floor-raiser — the
+            // returned wait is at least the 60-second floor.
+            XCTAssertGreaterThanOrEqual(retryAfter, 60)
+        }
+
+        let nextAttempt = archive.loadBackoffUntil(providerID: "opencode")
+        XCTAssertNotNil(nextAttempt, "backoff deadline must survive the request")
+        XCTAssertGreaterThan(nextAttempt ?? .distantPast, Date().addingTimeInterval(30))
+
+        // A follow-up fetch during the penalty must not touch the network —
+        // the next attempt deadline is still in the future.
+        var secondCallCount = 0
+        let secondSession = OpenCodeEndpoint.makeStubbedSession { _ in
+            secondCallCount += 1
+            return .status(500, headers: [:], body: "")
+        }
+        let secondProvider = OpenCodeSafeProvider(
+            session: secondSession,
+            loadCredentials: { OpenCodeCredentials.Credential(token: "sk-go-live") },
+            archive: archive
+        )
+        do {
+            _ = try await secondProvider.fetchSnapshot()
+            XCTFail("backoff in progress must not issue a request")
+        } catch UsageProviderError.rateLimited {
+            // Expected: the deadline from the first 429 is still ahead, so
+            // the second fetch is skipped without a request.
+        }
+        XCTAssertEqual(secondCallCount, 0)
+    }
+
+    func testOpenCodeSafeProviderRejectsARedirectedResponse() async {
+        let provider = OpenCodeSafeProvider(
+            session: OpenCodeEndpoint.makeStubbedSession { _ in
+                .redirected(to: "https://evil.example/api/usage")
+            },
+            loadCredentials: { OpenCodeCredentials.Credential(token: "sk-go-live") }
+        )
+
+        do {
+            _ = try await provider.fetchSnapshot()
+            XCTFail("a redirect to a different host must not be accepted")
+        } catch OpenCodeBoundaryError.invalidEndpoint {
+            // Expected: the response URL is checked against the allowlist
+            // even when the status code would otherwise look healthy.
+        } catch {
+            XCTFail("expected invalidEndpoint, got \(error)")
+        }
+    }
+
+    func testOpenCodeSafeProviderDoesNotMutateTheCredentialsFile() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("opencode-auth-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let original = Data(#"{"opencode-go":{"type":"api","key":"sk-go-live"}}"#.utf8)
+        try original.write(to: url)
+
+        let provider = OpenCodeSafeProvider(
+            session: OpenCodeEndpoint.makeStubbedSession { _ in
+                .status(500, headers: [:], body: "")
+            },
+            loadCredentials: { OpenCodeCredentials.load(from: url) }
+        )
+
+        _ = try? await provider.fetchSnapshot()
+
+        XCTAssertEqual(try Data(contentsOf: url), original,
+                       "the credential file was modified")
+    }
+
     @MainActor
     func testSafe12PreferenceKeysRemainReadable() {
         let suite = "Safe12Preferences.\(UUID().uuidString)"

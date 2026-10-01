@@ -115,7 +115,7 @@ if [[ -n "$entitlements" ]] && [[ "$entitlements" != *"<dict/>"* ]] \
     exit 1
 fi
 
-forbidden='hivinz|chatgpt[.]com/backend-api|api[.]github[.]com|cloudcode-pa[.]googleapis[.]com|cli-chat-proxy[.]grok[.]com|opencode[.]ai|perplexity[.]ai|posthog|sentry|appcast[.]xml'
+forbidden='hivinz|chatgpt[.]com/backend-api|api[.]github[.]com|cloudcode-pa[.]googleapis[.]com|cli-chat-proxy[.]grok[.]com|perplexity[.]ai|posthog|sentry|appcast[.]xml'
 for binary in "$verified_executable" "$verified_status_line_helper"; do
     if /usr/bin/strings "$binary" | /usr/bin/grep -Eiq "$forbidden"; then
         print -u2 "forbidden runtime destination or SDK string found in executable: $binary"
@@ -241,5 +241,5 @@ expected_copyright='Copyright (c) 2026 Vinz. Codenotch Safe modifications distri
     exit 1
 }
 
-print "allowed Codenotch network endpoint: https://cursor.com/api/usage-summary"
+print "allowed Codenotch network endpoints: https://cursor.com/api/usage-summary, https://opencode.ai/zen/go/v1/usage"
 print "signature, entitlement, import, symbol, destination, Keychain-free Claude, and bundle checks passed"
