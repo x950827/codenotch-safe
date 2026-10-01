@@ -1,10 +1,10 @@
 # Codenotch Safe
 
-Codenotch Safe is an audited macOS usage monitor for Claude Code, Cursor, and Codex. It is based on [Codenotch by Vinz](https://github.com/vinzdg/codenotch) and distributed under the [MIT License](LICENSE).
+Codenotch Safe is an audited macOS usage monitor for Claude Code, Cursor, Codex, and OpenCode Go. It is based on [Codenotch by Vinz](https://github.com/vinzdg/codenotch) and distributed under the [MIT License](LICENSE).
 
 ## Install
 
-Download `Codenotch-Safe-1.6.0-safe.14-universal.dmg` from the [GitHub Releases page](https://github.com/x950827/codenotch-safe/releases), or install the checksum-pinned Homebrew Cask:
+Download `Codenotch-Safe-1.6.0-safe.15-universal.dmg` from the [GitHub Releases page](https://github.com/x950827/codenotch-safe/releases), or install the checksum-pinned Homebrew Cask:
 
 ```sh
 brew install --cask x950827/tap/codenotch-safe
@@ -23,6 +23,7 @@ Safe keeps only these integrations:
 - Claude limits from fresh local Claude Code status-line data and the installed Claude CLI, without Keychain or bearer-token reads. If neither source returns current limits, the app shows them as unavailable instead of retaining an expired percentage.
 - Codex limits from its local app server, without bearer-token reads.
 - Cursor limits from its local editor state and `https://cursor.com/api/usage-summary`, only while Cursor is enabled.
+- OpenCode Go limits from the `opencode-go` key in `~/.local/share/opencode/auth.json` and `https://opencode.ai/zen/go/v1/usage`, only while OpenCode is enabled.
 
 The Safe build contains no embedded web view, analytics, automatic updater, or other provider endpoints. See the [security audit](SECURITY-AUDIT.md) for the checked source and runtime boundaries.
 

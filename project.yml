@@ -9,8 +9,8 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     SWIFT_STRICT_CONCURRENCY: minimal
-    MARKETING_VERSION: "1.6.0-safe.14"
-    CURRENT_PROJECT_VERSION: "14"
+    MARKETING_VERSION: "1.6.0-safe.15"
+    CURRENT_PROJECT_VERSION: "15"
     CODE_SIGNING_ALLOWED: "NO"
     ENABLE_HARDENED_RUNTIME: "YES"
     ENABLE_APP_SANDBOX: "NO"
@@ -37,6 +37,8 @@ targets:
       - path: Sources/Providers/CodexUsage.swift
       - path: Sources/Providers/CursorUsage.swift
       - path: Sources/Providers/GlyphOutline.swift
+      - path: Sources/Providers/OpenCodeCredentials.swift
+      - path: Sources/Providers/OpenCodeUsage.swift
       - path: Sources/Providers/ProviderAccount.swift
       - path: Sources/Providers/ProviderGlyph.swift
       - path: Sources/Providers/SQLiteStore.swift
