@@ -554,6 +554,26 @@ final class SecurityBoundaryTests: XCTestCase {
     }
 }
 
+/// A mutable counter shared with a `@Sendable` closure. Capturing a plain
+/// `var` in such a closure mutates it from the wrong isolation domain —
+/// Swift 6 mode turns that into an error. A class instance fixes it.
+private final class CallCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+
+    func bump() {
+        lock.lock()
+        defer { lock.unlock() }
+        count += 1
+    }
+}
+
 @MainActor
 private final class ActivityMonitorSpy: AgentActivityMonitor {
     private let subject = CurrentValueSubject<[AgentSession], Never>([])
@@ -824,15 +844,15 @@ final class SafeDisclosureTests: XCTestCase {
                        accuracy: 0.0001)
     }
 
-    func testOpenCodeRetryAfterParsesSecondsAndHTTPDate() {
+    func testOpenCodeRetryAfterParsesSecondsAndHTTPDate() throws {
         let secondsHeader = HTTPURLResponse(
             url: OpenCodeEndpoint.url,
             statusCode: 429,
             httpVersion: "HTTP/1.1",
             headerFields: ["Retry-After": "42"]
         )
-        XCTAssertEqual(OpenCodeEndpoint.retryAfter(from: secondsHeader), 42,
-                       accuracy: 0.0001)
+        let seconds = try XCTUnwrap(OpenCodeEndpoint.retryAfter(from: secondsHeader))
+        XCTAssertEqual(seconds, 42, accuracy: 0.0001)
 
         let future = Date().addingTimeInterval(300)
         let formatter = DateFormatter()
@@ -890,10 +910,14 @@ final class SafeDisclosureTests: XCTestCase {
             loadCredentials: { throw UsageProviderError.needsAuth }
         )
 
-        XCTAssertThrowsError(try await provider.fetchSnapshot()) { error in
-            guard case UsageProviderError.needsAuth = error else {
-                return XCTFail("expected needsAuth, got \(error)")
-            }
+        do {
+            _ = try await provider.fetchSnapshot()
+            XCTFail("missing credential must surface as needsAuth")
+        } catch UsageProviderError.needsAuth {
+            // Expected: the loader throws needsAuth before the network
+            // is touched, so the stubbed session is never asked.
+        } catch {
+            XCTFail("expected needsAuth, got \(error)")
         }
     }
 
@@ -963,9 +987,9 @@ final class SafeDisclosureTests: XCTestCase {
 
         // A follow-up fetch during the penalty must not touch the network —
         // the next attempt deadline is still in the future.
-        var secondCallCount = 0
+        let secondCallCount = CallCounter()
         let secondSession = OpenCodeEndpoint.makeStubbedSession { _ in
-            secondCallCount += 1
+            secondCallCount.bump()
             return .status(500, headers: [:], body: "")
         }
         let secondProvider = OpenCodeSafeProvider(
@@ -980,7 +1004,7 @@ final class SafeDisclosureTests: XCTestCase {
             // Expected: the deadline from the first 429 is still ahead, so
             // the second fetch is skipped without a request.
         }
-        XCTAssertEqual(secondCallCount, 0)
+        XCTAssertEqual(secondCallCount.value, 0)
     }
 
     func testOpenCodeSafeProviderRejectsARedirectedResponse() async {
@@ -1013,7 +1037,11 @@ final class SafeDisclosureTests: XCTestCase {
             session: OpenCodeEndpoint.makeStubbedSession { _ in
                 .status(500, headers: [:], body: "")
             },
-            loadCredentials: { OpenCodeCredentials.load(from: url) }
+            loadCredentials: {
+                // The test wrote `original` just above, so the key is
+                // present; force-unwrap is honest here.
+                try XCTUnwrap(OpenCodeCredentials.load(from: url))
+            }
         )
 
         _ = try? await provider.fetchSnapshot()
