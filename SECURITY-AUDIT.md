@@ -49,7 +49,7 @@ command is mandatory in CI before release publication.
 
 - Safe.15 audit date: 2026-10-01
 - Upstream base: `vinzdg/codenotch` at `6482ce0`
-- Audited implementation commit: _pending before release_
+- Audited implementation commit: `25265b602efdd5ddc1e712aa5abeb7816c6246b2` (feature); release commit `5fe739b92fcef26a2705770dc0f8e331e2a36ed1`
 - Bundle identifier: `local.audited.codenotch`
 - Bundle version: `1.6.0-safe.15`
 
