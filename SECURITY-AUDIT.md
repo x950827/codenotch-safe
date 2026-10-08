@@ -1,5 +1,20 @@
 # Codenotch Safe: local security audit
 
+## OpenCode v2 credential compatibility — 2026-10-02
+
+The local Safe.15 patch adds read-only access to OpenCode's `opencode.db`.
+Only a single active `credential` row with `integration_id = 'opencode'`
+and JSON `type = 'key'` is selected. OAuth credentials, inactive rows,
+ambiguous selections, empty keys, and other integrations are excluded.
+The active v2 key takes precedence over the legacy `auth.json` Go entry.
+The endpoint and redirect restrictions remain unchanged.
+
+The regression script exercises real SQLite fixtures and the production
+credential loader, including legacy fallback and byte-for-byte database
+preservation. A user-authorized diagnostic request confirmed that the active
+v2 Console key receives a successful Go usage response. Secrets were not
+printed or copied into Codenotch settings.
+
 ## Safe.15 OpenCode Go subscription check — 2026-10-01
 
 Safe.15 keeps the Safe.14 credential and destination boundaries and adds one

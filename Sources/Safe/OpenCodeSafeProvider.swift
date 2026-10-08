@@ -62,8 +62,8 @@ actor OpenCodeSafeProvider: UsageProvider {
     }
 
     nonisolated var signInRoute: SignInRoute {
-        .guidance("Usage rides on the opencode-go key OpenCode stores on sign-in — "
-                  + "connect Go inside OpenCode (`opencode auth login`) and the notch reads it.")
+        .guidance("Connect your OpenCode Console key in OpenCode. "
+                  + "Usage reads the active OpenCode v2 key or the legacy opencode-go sign-in.")
     }
 
     nonisolated func account() -> ProviderAccount? {
@@ -86,8 +86,7 @@ actor OpenCodeSafeProvider: UsageProvider {
             throw UsageProviderError.rateLimited(retryAfter: remaining)
         }
 
-        // Re-read on every fetch. This is an ordinary file, not a keychain
-        // item: reading it puts no prompt in front of anyone.
+        // Re-read OpenCode's file or read-only database on every fetch.
         let credentials: OpenCodeCredentials.Credential
         do {
             credentials = try loadCredentials()

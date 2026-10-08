@@ -1,6 +1,11 @@
 import Foundation
+import SQLite3
 
 /// The OpenCode Go key, borrowed from OpenCode's own sign-in.
+///
+/// OpenCode v2 stores the active console key in `opencode.db`. Earlier
+/// versions keep the Go key in `auth.json`. Both stores are read-only;
+/// OAuth access tokens and other vendors' credentials are never selected.
 ///
 /// `~/.local/share/opencode/auth.json` holds one entry per connected account.
 /// The `opencode-go` entry (`{"type": "api", "key": ...}`) is the Go plan's API
@@ -19,6 +24,29 @@ enum OpenCodeCredentials {
     }
 
     static func load(from url: URL = authURL) -> Credential? {
+        let databaseURL = url.deletingLastPathComponent().appendingPathComponent("opencode.db")
+        if let credential = loadDatabase(from: databaseURL) { return credential }
+        return loadLegacy(from: url)
+    }
+
+    private static func loadDatabase(from url: URL) -> Credential? {
+        guard let db = SQLiteStore.open(url) else { return nil }
+        defer { sqlite3_close(db) }
+        let rows = SQLiteStore.rows(
+            in: db,
+            sql: "SELECT value FROM credential WHERE integration_id = 'opencode' AND active = 1"
+        )
+        // An ambiguous selection must never borrow a key from an arbitrary account.
+        guard rows.count == 1,
+              let data = rows[0].data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object["type"] as? String == "key",
+              let token = nonEmpty(object["key"] as? String)
+        else { return nil }
+        return Credential(token: token)
+    }
+
+    private static func loadLegacy(from url: URL) -> Credential? {
         guard let data = try? Data(contentsOf: url),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let entry = root["opencode-go"]
