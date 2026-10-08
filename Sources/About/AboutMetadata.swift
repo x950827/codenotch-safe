@@ -18,7 +18,7 @@ enum AboutMetadata {
     static let safeChanges = [
         "Claude limits use local Claude Code integrations without Keychain or bearer-token reads.",
         "Codex limits use its local app server without bearer-token reads.",
-        "Cursor and OpenCode are the only providers allowed to contact their audited usage endpoints, and only while enabled; OpenCode reads the opencode-go key from the user's own auth.json without Keychain or bearer-token reads from elsewhere.",
+        "Cursor and OpenCode are the only providers allowed to contact their audited usage endpoints, and only while enabled; OpenCode reads its active Console key from its v2 database (read-only) or the legacy opencode-go entry in auth.json, without Keychain access.",
         "The Safe build has no embedded web view, updater, or analytics; CI checks its credential and network boundaries.",
     ]
 }

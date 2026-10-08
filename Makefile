@@ -36,7 +36,10 @@ safe-signing-test:
 safe-keychain-policy-test:
 	Scripts/test-safe-keychain-policy.sh
 
-safe-build: safe-typecheck safe-signing-test safe-keychain-policy-test
+safe-opencode-credentials-test:
+	zsh Scripts/test-opencode-v2-credentials.sh
+
+safe-build: safe-typecheck safe-signing-test safe-keychain-policy-test safe-opencode-credentials-test
 	Scripts/build-safe-local.sh
 
 safe-verify: safe-build
