@@ -34,7 +34,7 @@ enum OpenCodeCredentials {
         defer { sqlite3_close(db) }
         let rows = SQLiteStore.rows(
             in: db,
-            sql: "SELECT value FROM credential WHERE integration_id = 'opencode' AND active = 1"
+            sql: "SELECT value FROM credential WHERE integration_id IN ('opencode', 'opencode-go') AND active = 1"
         )
         // An ambiguous selection must never borrow a key from an arbitrary account.
         guard rows.count == 1,

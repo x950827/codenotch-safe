@@ -1,10 +1,10 @@
-# Codenotch Safe 1.6.0-safe.16
+# Codenotch Safe 1.6.0-safe.17
 
 Codenotch Safe is an audited fork of [Codenotch by Vinz](https://github.com/vinzdg/codenotch) for teams that use Claude, Cursor, Codex, and OpenCode Go. Each provider can be disabled independently; a disabled provider is not queried and its activity monitor is stopped.
 
-Safe.16 restores OpenCode Go usage for OpenCode v2 Console login. It reads the single active OpenCode key from the local `opencode.db` in read-only mode, with the legacy `auth.json` path retained as a fallback. OAuth credentials, other providers, inactive keys, and ambiguous active records are excluded. The key is sent only to the existing audited OpenCode Go usage endpoint; credential contents are never logged.
+Safe.17 fixes OpenCode v2 Go credential detection on installations that store the key under `opencode-go` rather than `opencode`. Both identifiers are accepted, but exactly one active key must exist across them. OAuth credentials, inactive keys, other providers, and ambiguous records remain excluded. The database is read-only and the audited usage endpoint is unchanged.
 
-The release includes regression checks for v2 selection, legacy fallback, malformed and ambiguous records, and unchanged database files.
+Regression checks cover both identifiers, ambiguity across them, OAuth exclusion, legacy fallback, malformed records, and unchanged database files.
 
 The release is a universal macOS application for Apple silicon and Intel Macs running macOS 15.0 or later. Install it from the DMG or through the checksum-pinned Homebrew Cask:
 
