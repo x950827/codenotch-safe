@@ -4,7 +4,7 @@ Codenotch Safe is an audited macOS usage monitor for Claude Code, Cursor, Codex,
 
 ## Install
 
-Download `Codenotch-Safe-1.6.0-safe.16-universal.dmg` from the [GitHub Releases page](https://github.com/x950827/codenotch-safe/releases), or install the checksum-pinned Homebrew Cask:
+Download `Codenotch-Safe-1.6.0-safe.17-universal.dmg` from the [GitHub Releases page](https://github.com/x950827/codenotch-safe/releases), or install the checksum-pinned Homebrew Cask:
 
 ```sh
 brew install --cask x950827/tap/codenotch-safe

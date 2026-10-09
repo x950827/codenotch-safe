@@ -1,5 +1,13 @@
 # Codenotch Safe: local security audit
 
+## OpenCode Go v2 identifier compatibility — 2026-10-09
+
+Safe.17 accepts `opencode` and `opencode-go` integration identifiers in the
+read-only credential query. Exactly one active key across both is required.
+No additional credential types or network destinations are permitted.
+Regression fixtures cover Go keys, Go OAuth exclusion, and mixed-identifier
+ambiguity, in addition to the existing cases; database bytes remain unchanged.
+
 ## OpenCode v2 credential compatibility — 2026-10-02
 
 The local Safe.15 patch adds read-only access to OpenCode's `opencode.db`.
